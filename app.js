@@ -479,7 +479,10 @@
     }
     const warning=e.target.closest('[data-calendar-warning]');
     if(warning){
-      const absent=warning.dataset.warningAction==='absence';
+      const absent=warning.dataset.warningAction==='mark';
+      const memberName=trainerData?.bookings?.find(booking=>String(booking.id)===warning.dataset.calendarWarning)?.member_name||'el socio';
+      if(absent&&!window.confirm(`¿Confirmas que ${memberName} no asistió a esta clase reservada? Se registrará un warning en su historial.`))return;
+      if(!absent&&!window.confirm(`¿Quieres anular el warning de ${memberName}?`))return;
       const {error}=await db.rpc('set_absence',{p_key:trainerKey,p_token:trainerToken,p_booking_id:warning.dataset.calendarWarning,p_absent:absent});
       if(error){showDbError(error);return;}
       await fetchTrainerData();renderTrainerCalendar();notify(absent?'Warning registrado en el historial del socio.':'Warning anulado.');return;
