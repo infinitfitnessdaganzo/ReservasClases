@@ -2,11 +2,12 @@
   const TIMES = ['09:00 – 10:00', '18:00 – 18:30', '20:30 – 21:00'];
   const END_TIMES = ['10:00', '18:30', '21:00'];
   const MAX_CAPACITY = 6;
+  const MEMBER_NAME_STORAGE_KEY = 'infinitFitnessDaganzoMemberName';
   const config = window.GYM_CONFIG || {};
   const ready = Boolean(window.supabase?.createClient && config.supabaseUrl && config.supabasePublishableKey && !config.supabaseUrl.includes('PEGA_AQUI') && !config.supabasePublishableKey.includes('PEGA_AQUI'));
   const db = ready ? window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey) : null;
   let view = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  let selected = null, selectedSlot = null, counts = {}, availability = {}, trainerKey = '', trainerData = null, trainerView = '', historyName = '', warningName = '';
+  let selected = null, selectedSlot = null, counts = {}, availability = {}, trainerKey = '', trainerToken = '', trainerData = null, trainerView = '', historyName = '', warningName = '';
   let trainerCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1),trainerCalendarDate='',trainerCalendarSlot=null,trainerCalendarAvailability={},trainerCalendarScheduleDraft=null;
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -119,9 +120,9 @@
     $('bookingConfirmation').classList.add('show'); $('closeBookingConfirmation').focus();
   }
   function closeBookingConfirmation() { $('bookingConfirmation').classList.remove('show'); }
-  function setTrainerPanel(authorized) { $('trainerLogin').hidden=authorized; $('trainerPanel').hidden=!authorized; if(!authorized){trainerKey='';trainerData=null;historyName='';warningName='';$('roster').innerHTML='';$('pastRoster').innerHTML='';$('historyMembers').innerHTML='';$('historyView').innerHTML='';$('warningMembers').innerHTML='';$('warningSessions').innerHTML='';} }
+  function setTrainerPanel(authorized) { $('trainerLogin').hidden=authorized; $('trainerPanel').hidden=!authorized; if(!authorized){trainerKey='';trainerToken='';trainerData=null;$('trainerPassword').value='';historyName='';warningName='';$('roster').innerHTML='';$('pastRoster').innerHTML='';$('historyMembers').innerHTML='';$('historyView').innerHTML='';$('warningMembers').innerHTML='';$('warningSessions').innerHTML='';} }
   async function fetchTrainerData() {
-    const {data,error}=await db.rpc('trainer_data',{p_key:trainerKey}); if(error) throw error;
+    const {data,error}=await db.rpc('trainer_data',{p_key:trainerKey,p_token:trainerToken}); if(error) throw error;
     trainerData=data||{bookings:[],events:[]}; return trainerData;
   }
   function currentAbsence(booking) {
@@ -306,7 +307,11 @@
   $('prev').onclick=()=>{view=new Date(view.getFullYear(),view.getMonth()-1,1);render();loadCounts();};
   $('next').onclick=()=>{view=new Date(view.getFullYear(),view.getMonth()+1,1);render();loadCounts();};
   $('days').onclick=e=>{const el=e.target.closest('[data-day]');if(!el)return;const d=new Date(view.getFullYear(),view.getMonth(),Number(el.dataset.day));if(!isBookable(d))return;selected=d;selectedSlot=null;renderCalendar();renderClasses();syncReserveButton();};
-  $('memberName').oninput=()=>{updateRulesContactLinks();syncReserveButton();};
+  try{$('memberName').value=localStorage.getItem(MEMBER_NAME_STORAGE_KEY)||'';}catch{}
+  $('memberName').oninput=()=>{
+    try{const name=$('memberName').value.trim().replace(/\s+/g,' ');if(name)localStorage.setItem(MEMBER_NAME_STORAGE_KEY,name);else localStorage.removeItem(MEMBER_NAME_STORAGE_KEY);}catch{}
+    updateRulesContactLinks();syncReserveButton();
+  };
   $('reserve').onclick=async()=>{
     if(!ready||selectedSlot===null||!selected)return;
     if(!validName($('memberName').value)){notify('Escribe tu nombre y tus dos apellidos.');return;}
@@ -349,12 +354,23 @@
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeBookingConfirmation();closeNotice();closeTrainerCalendar();}});
   $('closeModal').onclick=()=>{$('trainerModal').classList.remove('show');setTrainerPanel(false);};
   $('trainerModal').onclick=e=>{if(e.target===$('trainerModal')){$('trainerModal').classList.remove('show');setTrainerPanel(false);}};
+  try{$('trainerName').value=localStorage.getItem('infinitFitnessDaganzoTrainerUsername')||'';}catch{}
   window.gymTrainerLogin=async()=>{
     if(!ready){notify('Primero hay que configurar la base de datos compartida.');return;}
-    const input=$('trainerName').value.trim();if(!validName(input)){notify('Escribe tu nombre y tus dos apellidos.');return;}
-    const {data,error}=await db.rpc('trainer_data',{p_key:input});if(error){console.error('No se pudo validar el entrenador:',error);notify(error.message||'No se pudo validar el acceso.');return;}
-    trainerKey=input;trainerData=data;trainerView='';setTrainerPanel(true);renderTrainerView();
+    const input=$('trainerName').value.trim(),password=$('trainerPassword').value;
+    if(!input||!password){notify('Escribe tu usuario y contraseña de entrenador.');return;}
+    const loginButton=$('trainerLoginButton');loginButton.disabled=true;
+    try{
+      const {data,error}=await db.rpc('trainer_login',{p_username:input,p_password:password});
+      if(error)throw error;
+      trainerKey=data?.trainer_name||'';trainerToken=data?.token||'';
+      if(!trainerKey||!trainerToken)throw new Error('No se recibió una sesión válida.');
+      try{localStorage.setItem('infinitFitnessDaganzoTrainerUsername',input);}catch{}
+      await fetchTrainerData();trainerView='';setTrainerPanel(true);renderTrainerView();
+    }catch(error){console.error('No se pudo validar el entrenador:',error);notify('Usuario o contraseña incorrectos.');trainerKey='';trainerToken='';}
+    finally{$('trainerPassword').value='';loginButton.disabled=false;}
   };
+  $('trainerName').onkeydown=$('trainerPassword').onkeydown=e=>{if(e.key==='Enter')window.gymTrainerLogin();};
   const handleTrainerNavClick=e=>{
     if(e.target.closest('[data-open-trainer-calendar]')){openTrainerCalendar();return;}
     const button=e.target.closest('[data-trainer-view]');if(button)changeTrainerView(button.dataset.trainerView);
@@ -379,7 +395,7 @@
       if(trainerData?.is_owner!==true){notify('Solo Fernando puede gestionar los horarios.');return;}
       const openSlots=trainerCalendarScheduleDraft??[...$('trainerCalendarDetails').querySelectorAll('[data-calendar-open-slot]:checked')].map(input=>Number(input.dataset.calendarOpenSlot));
       saveSchedule.disabled=true;
-      const {error}=await db.rpc('trainer_set_class_schedule',{p_key:trainerKey,p_class_date:trainerCalendarDate,p_open_slots:openSlots});
+      const {error}=await db.rpc('trainer_set_class_schedule',{p_key:trainerKey,p_token:trainerToken,p_class_date:trainerCalendarDate,p_open_slots:openSlots});
       if(error){showDbError(error);saveSchedule.disabled=false;return;}
       trainerCalendarScheduleDraft=null;
       await loadTrainerCalendarAvailability();
@@ -391,7 +407,7 @@
       const memberName=$('trainerCalendarMember')?.value||'';
       if(!memberName){notify('Selecciona un socio activo para añadir la reserva.');return;}
       addBooking.disabled=true;
-      const {error}=await db.rpc('trainer_add_booking',{p_key:trainerKey,p_member_name:memberName,p_class_date:trainerCalendarDate,p_slot:trainerCalendarSlot});
+      const {error}=await db.rpc('trainer_add_booking',{p_key:trainerKey,p_token:trainerToken,p_member_name:memberName,p_class_date:trainerCalendarDate,p_slot:trainerCalendarSlot});
       if(error){showDbError(error);addBooking.disabled=false;return;}
       await fetchTrainerData();await loadCounts();renderTrainerCalendar();notify(`Reserva añadida para ${memberName}.`);return;
     }
@@ -401,7 +417,7 @@
       if(absent&&!window.confirm('¿Confirmas que este socio no asistió a la clase reservada? Se registrará un warning en su historial.'))return;
       if(!absent&&!window.confirm('¿Quieres anular este warning?'))return;
       warning.disabled=true;
-      const {error}=await db.rpc('set_absence',{p_key:trainerKey,p_booking_id:warning.dataset.calendarWarning,p_absent:absent});
+      const {error}=await db.rpc('set_absence',{p_key:trainerKey,p_token:trainerToken,p_booking_id:warning.dataset.calendarWarning,p_absent:absent});
       if(error){showDbError(error);warning.disabled=false;return;}
       await fetchTrainerData();renderTrainerCalendar();notify(absent?'Warning registrado en el historial del socio.':'Warning anulado.');return;
     }
@@ -411,7 +427,7 @@
       if(classHasStarted(fromIsoDate(trainerCalendarDate),trainerCalendarSlot)){notify('No se puede cancelar una reserva cuando la clase ya ha empezado.');return;}
       if(!window.confirm('¿Quieres cancelar esta reserva? Se guardará en el historial del socio.'))return;
       cancel.disabled=true;
-      const {error}=await db.rpc('trainer_cancel_booking',{p_key:trainerKey,p_booking_id:cancel.dataset.calendarCancel});
+      const {error}=await db.rpc('trainer_cancel_booking',{p_key:trainerKey,p_token:trainerToken,p_booking_id:cancel.dataset.calendarCancel});
       if(error){showDbError(error);cancel.disabled=false;return;}
       await fetchTrainerData();await loadCounts();renderTrainerCalendar();notify('Reserva cancelada y registrada en el historial.');return;
     }
@@ -445,7 +461,7 @@
     }
     const button=$('saveScheduleButton');button.disabled=true;
     try{
-      const {error}=await db.rpc('trainer_set_class_schedule',{p_key:trainerKey,p_class_date:date,p_open_slots:openSlots});
+      const {error}=await db.rpc('trainer_set_class_schedule',{p_key:trainerKey,p_token:trainerToken,p_class_date:date,p_open_slots:openSlots});
       if(error){showDbError(error);return;}
       await fetchTrainerData();renderTrainerView();await loadCounts();await loadScheduleForDate();
       notify(`Horarios actualizados para ${displayDate(fromIsoDate(date),{weekday:'long',day:'numeric',month:'long',year:'numeric'})}.`);
@@ -462,7 +478,7 @@
     if(classSlot===''){notify('Selecciona una clase.');return;}
 
     const button=$('addBookingButton');button.disabled=true;
-    const {data,error}=await db.rpc('trainer_add_booking',{p_key:trainerKey,p_member_name:memberName,p_class_date:classDate,p_slot:Number(classSlot)});
+    const {data,error}=await db.rpc('trainer_add_booking',{p_key:trainerKey,p_token:trainerToken,p_member_name:memberName,p_class_date:classDate,p_slot:Number(classSlot)});
     if(error){showDbError(error);button.disabled=false;return;}
     $('trainerBookingDate').value='';$('trainerBookingSlot').value='';$('trainerBookingMember').value='';
     await fetchTrainerData();renderTrainerView();await loadCounts();
@@ -474,7 +490,7 @@
     const name=$('newMemberName').value.trim().replace(/\s+/g,' ');
     if(!validName(name)){notify('Escribe el nombre y los dos apellidos del socio.');return;}
     const button=$('addMemberButton');button.disabled=true;
-    const {error}=await db.rpc('trainer_add_member',{p_key:trainerKey,p_member_name:name});
+    const {error}=await db.rpc('trainer_add_member',{p_key:trainerKey,p_token:trainerToken,p_member_name:name});
     if(error){showDbError(error);button.disabled=false;return;}
     $('newMemberName').value='';await fetchTrainerData();renderTrainerView();notify(`${name} ya puede reservar clases.`);button.disabled=false;
   };
@@ -486,7 +502,7 @@
       if(trainerData?.is_owner!==true){notify('Solo Fernando puede activar o desactivar socios.');return;}
       const name=statusButton.dataset.toggleMemberActive,active=statusButton.dataset.nextActive==='true';
       statusButton.disabled=true;
-      const {error}=await db.rpc('trainer_set_member_active',{p_key:trainerKey,p_member_name:name,p_is_active:active});
+      const {error}=await db.rpc('trainer_set_member_active',{p_key:trainerKey,p_token:trainerToken,p_member_name:name,p_is_active:active});
       if(error){showDbError(error);statusButton.disabled=false;return;}
       await fetchTrainerData();renderTrainerView();notify(active?`${name} está activo y puede reservar.`:`${name} está desactivado y ya no puede reservar.`);return;
     }
@@ -495,7 +511,7 @@
       if(trainerData?.is_owner!==true){notify('Solo Fernando puede borrar historiales de socios.');return;}
       const name=historyName;if(!name)return;
       if(!window.confirm(`Vas a borrar únicamente el historial de «${name}». El socio y sus reservas activas se conservarán. Esta acción no se puede deshacer. ¿Quieres continuar?`))return;
-      clearOne.disabled=true;const {error}=await db.rpc('trainer_clear_member_history',{p_key:trainerKey,p_member_name:name});
+      clearOne.disabled=true;const {error}=await db.rpc('trainer_clear_member_history',{p_key:trainerKey,p_token:trainerToken,p_member_name:name});
       if(error){showDbError(error);clearOne.disabled=false;return;}
       await fetchTrainerData();renderTrainerView();notify(`Se ha borrado el historial de «${name}». El socio y sus reservas siguen activos.`);return;
     }
@@ -504,7 +520,7 @@
       if(trainerData?.is_owner!==true){notify('Solo Fernando puede borrar historiales de socios.');return;}
       const name=historyName;if(!name)return;
       if(!window.confirm(`Vas a borrar el socio «${name}», todas sus reservas activas y todo su historial. Esta acción no se puede deshacer. ¿Quieres continuar?`))return;
-      deleteOne.disabled=true;const {error}=await db.rpc('trainer_delete_member_history',{p_key:trainerKey,p_member_name:name});
+      deleteOne.disabled=true;const {error}=await db.rpc('trainer_delete_member_history',{p_key:trainerKey,p_token:trainerToken,p_member_name:name});
       if(error){showDbError(error);deleteOne.disabled=false;return;}
       historyName='';await fetchTrainerData();renderTrainerView();await loadCounts();notify(`Se ha borrado el socio «${name}» y todo su historial.`);return;
     }
@@ -513,7 +529,7 @@
       if(trainerData?.is_owner!==true){notify('Solo Fernando puede borrar todos los historiales.');return;}
       if(!window.confirm('Vas a borrar todos los historiales de los socios. Se conservarán los socios dados de alta y todas las reservas activas. Esta acción no se puede deshacer. ¿Quieres continuar?'))return;
       clearAll.disabled=true;
-      const {error}=await db.rpc('trainer_clear_all_member_history',{p_key:trainerKey});
+      const {error}=await db.rpc('trainer_clear_all_member_history',{p_key:trainerKey,p_token:trainerToken});
       if(error){showDbError(error);clearAll.disabled=false;return;}
       await fetchTrainerData();renderTrainerView();notify('Se han borrado todos los historiales. Los socios y las reservas activas se han conservado.');return;
     }
@@ -527,7 +543,7 @@
     if(absent&&!window.confirm(`¿Confirmas que ${warningName} no asistió a esta clase reservada? Se registrará un warning en su historial.`))return;
     if(!absent&&!window.confirm(`¿Quieres anular este warning de ${warningName}?`))return;
     button.disabled=true;
-    const {error}=await db.rpc('set_absence',{p_key:trainerKey,p_booking_id:button.dataset.warningBooking,p_absent:absent});
+    const {error}=await db.rpc('set_absence',{p_key:trainerKey,p_token:trainerToken,p_booking_id:button.dataset.warningBooking,p_absent:absent});
     if(error){showDbError(error);button.disabled=false;return;}
     await fetchTrainerData();renderTrainerView();notify(absent?'Warning registrado en el historial del socio.':'Warning anulado.');
   };
@@ -537,11 +553,11 @@
       if(trainerData?.is_owner!==true){notify('No tienes permiso para cancelar reservas desde el panel.');return;}
       if(!window.confirm('¿Quieres cancelar esta reserva? Se guardará en el historial del socio.'))return;
       button.disabled=true;
-      const {error}=await db.rpc('trainer_cancel_booking',{p_key:trainerKey,p_booking_id:bookingId});if(error){showDbError(error);button.disabled=false;return;}
+      const {error}=await db.rpc('trainer_cancel_booking',{p_key:trainerKey,p_token:trainerToken,p_booking_id:bookingId});if(error){showDbError(error);button.disabled=false;return;}
       notify('Reserva cancelada y registrada en el historial.');await fetchTrainerData();renderTrainerView();await loadCounts();return;
     }
     const absent=action==='absence';
-    const {error}=await db.rpc('set_absence',{p_key:trainerKey,p_booking_id:bookingId,p_absent:absent});if(error){showDbError(error);return;}await fetchTrainerData();renderTrainerView();
+    const {error}=await db.rpc('set_absence',{p_key:trainerKey,p_token:trainerToken,p_booking_id:bookingId,p_absent:absent});if(error){showDbError(error);return;}await fetchTrainerData();renderTrainerView();
   };
   $('roster').onclick=handleRosterAction;
   $('pastRoster').onclick=handleRosterAction;
