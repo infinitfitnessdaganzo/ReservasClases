@@ -180,10 +180,13 @@
       const key=dateKey(new Date(year,month,day));
       const count=(trainerData?.bookings||[]).filter(b=>b.class_date===key).length;
       const openSlots=trainerCalendarAvailability[key]||[];
+      const memberDate=fromIsoDate(key);
+      const memberCanBook=isBookable(memberDate)&&openSlots.some(slot=>!classBookingClosed(memberDate,slot)&&(trainerData?.bookings||[]).filter(b=>b.class_date===key&&Number(b.class_slot)===slot).length<MAX_CAPACITY);
       const status=count?'has-reservations':openSlots.length?'no-reservations':'no-classes';
-      const cls=['trainer-calendar-day',key===trainerCalendarDate?'selected':'',key===todayKey?'today':''].filter(Boolean).join(' ');
+      const cls=['trainer-calendar-day',!memberCanBook?'member-unavailable':'',key===trainerCalendarDate?'selected':'',key===todayKey?'today':''].filter(Boolean).join(' ');
       const countLabel=count?`${count} ${count===1?'reserva':'reservas'}`:openSlots.length?'Sin reservas':'Sin clases';
-      html+=`<button type="button" class="${cls}" data-calendar-day="${key}"><span class="trainer-calendar-number">${day}</span><span class="trainer-calendar-count ${status}">${countLabel}</span></button>`;
+      const title=memberCanBook?'Día disponible para reservas de socios':'Día no disponible para reservas de socios';
+      html+=`<button type="button" class="${cls}" data-calendar-day="${key}" title="${title}"><span class="trainer-calendar-number">${day}</span><span class="trainer-calendar-count ${status}">${countLabel}</span></button>`;
     }
     $('trainerCalendarDays').innerHTML=html;
     renderTrainerCalendarDetails();
@@ -233,22 +236,21 @@
   }
   function discardTrainerCalendarScheduleDraft(){if(trainerCalendarScheduleDraft===null)return true;if(!window.confirm('Tienes cambios de horarios sin guardar. ¿Quieres descartarlos?'))return false;trainerCalendarScheduleDraft=null;return true;}
   function closeTrainerCalendar() {if(!discardTrainerCalendarScheduleDraft())return;$('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');}
-  function trainerMemberNames() {
-    const names=new Map();
-    (trainerData?.members||[]).forEach(m=>{if(!names.has(norm(m.member_name)))names.set(norm(m.member_name),m.member_name)});
-    (trainerData?.bookings||[]).forEach(b=>{if(!names.has(norm(b.member_name)))names.set(norm(b.member_name),b.member_name)});
-    (trainerData?.events||[]).forEach(e=>{if(!names.has(norm(e.member_name)))names.set(norm(e.member_name),e.member_name)});
-    return [...names.values()].sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));
+  function warningWindowStartKey(todayKey=madridTodayKey()) {
+    const firstDate=fromIsoDate(todayKey);firstDate.setDate(firstDate.getDate()-7);return dateKey(firstDate);
   }
   function renderWarnings() {
-    const names=trainerMemberNames();
-    $('warningMembers').innerHTML=`<h3>Selecciona un socio</h3><p class="member-add-copy">Elige un socio para consultar sus reservas de los últimos 7 días.</p>${names.length?'<div class="member-list">'+names.map(name=>`<div class="member-row"><button class="member-choice ${warningName&&norm(warningName)===norm(name)?'active':''}" type="button" data-warning-member="${escapeHtml(name)}"><span>${escapeHtml(name)}</span><span class="member-expand">${warningName&&norm(warningName)===norm(name)?'Seleccionado':'Ver sesiones'}</span></button></div>`).join('')+'</div>':'<div class="empty">No hay socios dados de alta.</div>'}`;
+    const todayKey=madridTodayKey(),firstDateKey=warningWindowStartKey(todayKey);
+    const recentBookings=(trainerData?.bookings||[]).filter(b=>b.class_date>=firstDateKey&&b.class_date<=todayKey);
+    const names=[...new Map(recentBookings.map(b=>[norm(b.member_name),b.member_name])).values()].sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));
+    if(warningName&&!names.some(name=>norm(name)===norm(warningName)))warningName='';
+    $('warningMembers').innerHTML=`<h3>Selecciona un socio</h3><p class="member-add-copy">Solo aparecen socios con reservas entre hoy y los 7 días anteriores.</p>${names.length?'<div class="member-list">'+names.map(name=>`<div class="member-row"><button class="member-choice ${warningName&&norm(warningName)===norm(name)?'active':''}" type="button" data-warning-member="${escapeHtml(name)}"><span>${escapeHtml(name)}</span><span class="member-expand">${warningName&&norm(warningName)===norm(name)?'Seleccionado':'Ver sesiones'}</span></button></div>`).join('')+'</div>':'<div class="empty">No hay socios con reservas en este periodo.</div>'}`;
     renderWarningSessions();
   }
   function renderWarningSessions() {
     const panel=$('warningSessions');
     if(!warningName){panel.innerHTML='<div class="empty">Selecciona un socio para ver sus sesiones reservadas.</div>';return;}
-    const todayKey=madridTodayKey(),firstDate=new Date(`${todayKey}T12:00:00Z`);firstDate.setUTCDate(firstDate.getUTCDate()-6);const firstDateKey=firstDate.toISOString().slice(0,10);
+    const todayKey=madridTodayKey(),firstDateKey=warningWindowStartKey(todayKey);
     const sessions=(trainerData?.bookings||[]).filter(b=>norm(b.member_name)===norm(warningName)).filter(b=>b.class_date>=firstDateKey&&b.class_date<=todayKey).sort((a,b)=>`${b.class_date}-${b.class_slot}`.localeCompare(`${a.class_date}-${a.class_slot}`));
     if(!sessions.length){panel.innerHTML=`<h3>Sesiones de ${escapeHtml(warningName)}</h3><div class="empty">No tiene sesiones reservadas en los últimos 7 días.</div>`;return;}
     panel.innerHTML=`<h3>Sesiones reservadas por ${escapeHtml(warningName)} · últimos 7 días</h3>`+sessions.map(booking=>{
@@ -305,12 +307,12 @@
     const isOwner=trainerData?.is_owner===true;
     $('ownerTrainerNav').hidden=!isOwner; $('regularTrainerNav').hidden=isOwner;
     document.querySelectorAll('#ownerTrainerNav [data-trainer-view],#regularTrainerNav [data-trainer-view]').forEach(button=>{
-      const active=button.dataset.trainerView===trainerView;
+      const active=button.dataset.trainerView===trainerView&&button.dataset.trainerView!=='history';
       button.classList.toggle('active-trainer-tab',active);
       if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
     });
-    $('showAddMemberOwner').classList.toggle('active-trainer-tab',trainerView==='addMember');
-    $('showScheduleOwner').classList.toggle('active-trainer-tab',trainerView==='schedule');
+    const addMemberOwner=$('showAddMemberOwner');if(addMemberOwner)addMemberOwner.classList.toggle('active-trainer-tab',trainerView==='addMember');
+    const showSchedule=$('showScheduleOwner');if(showSchedule)showSchedule.classList.toggle('active-trainer-tab',trainerView==='schedule');
     $('roster').hidden=!['roster','today','future'].includes(trainerView); $('pastRoster').hidden=trainerView!=='pastRoster'; $('historyMembers').hidden=trainerView!=='history'; $('memberAddPanel').hidden=trainerView!=='addMember'||!isOwner; $('trainerBookingPanel').hidden=trainerView!=='addBooking'; $('schedulePanel').hidden=trainerView!=='schedule'||!isOwner; $('warningMembers').hidden=trainerView!=='warnings'; $('warningSessions').hidden=trainerView!=='warnings';
     if(trainerView==='roster')renderRoster(); if(trainerView==='today'||trainerView==='future')renderOwnerRoster(trainerView); if(trainerView==='pastRoster')renderPastRoster(); if(trainerView==='history')renderMembers(); if(trainerView==='warnings')renderWarnings(); if(trainerView==='addBooking')renderAddBooking();
   }
@@ -324,7 +326,11 @@
     try{await fetchTrainerData();renderTrainerView();$('trainerHistoryScreen').hidden=false;document.body.classList.add('trainer-history-open');renderMembers();$('historySearch').focus();}
     catch(error){showDbError(error);}
   }
-  function closeTrainerHistory(){ $('trainerHistoryScreen').hidden=true;document.body.classList.remove('trainer-history-open'); }
+  function closeTrainerHistory(){
+    const wasOpen=!$('trainerHistoryScreen').hidden;
+    $('trainerHistoryScreen').hidden=true;document.body.classList.remove('trainer-history-open');
+    if(trainerPortal&&trainerKey&&wasOpen){trainerView='';renderTrainerView();$('trainerModal').classList.remove('show');openTrainerCalendar();}
+  }
   $('prev').onclick=()=>{view=new Date(view.getFullYear(),view.getMonth()-1,1);render();loadCounts();};
   $('next').onclick=()=>{view=new Date(view.getFullYear(),view.getMonth()+1,1);render();loadCounts();};
   $('days').onclick=e=>{const el=e.target.closest('[data-day]');if(!el)return;const d=new Date(view.getFullYear(),view.getMonth(),Number(el.dataset.day));if(!isBookable(d))return;selected=d;selectedSlot=null;renderCalendar();renderClasses();syncReserveButton();};
@@ -414,8 +420,8 @@
   $('regularTrainerNav').onclick=handleTrainerNavClick;
   $('closeTrainerHistory').onclick=closeTrainerHistory;
   $('historySearch').oninput=renderMembers;
-  $('trainerCalendarOptions').onclick=()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;$('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');$('trainerModal').classList.add('show');$('trainerLogin').hidden=true;$('trainerPanel').hidden=false;};
-  $('trainerBackToCalendar').onclick=async()=>{$('trainerModal').classList.remove('show');await openTrainerCalendar();};
+  $('trainerCalendarOptions').onclick=()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerView='';renderTrainerView();$('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');$('trainerModal').classList.add('show');$('trainerLogin').hidden=true;$('trainerPanel').hidden=false;};
+  $('trainerBackToCalendar').onclick=async()=>{trainerView='';renderTrainerView();$('trainerModal').classList.remove('show');await openTrainerCalendar();};
   $('trainerCalendarModal').onclick=e=>{if(e.target===$('trainerCalendarModal')&&!trainerPortal)closeTrainerCalendar();};
   $('trainerCalendarPrev').onclick=async()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerCalendarMonth=new Date(trainerCalendarMonth.getFullYear(),trainerCalendarMonth.getMonth()-1,1);trainerCalendarDate='';trainerCalendarSlot=null;await loadTrainerCalendarAvailability();renderTrainerCalendar();};
   $('trainerCalendarNext').onclick=async()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerCalendarMonth=new Date(trainerCalendarMonth.getFullYear(),trainerCalendarMonth.getMonth()+1,1);trainerCalendarDate='';trainerCalendarSlot=null;await loadTrainerCalendarAvailability();renderTrainerCalendar();};
