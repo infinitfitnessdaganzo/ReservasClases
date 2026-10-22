@@ -51,6 +51,7 @@
     return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}:${part('second')}`;
   }
   function classHasEnded(date,slot) { return `${dateKey(date)}T${END_TIMES[slot]}:00`<madridDateTimeKey(); }
+  function classHasStarted(date,slot) { return `${dateKey(date)}T${TIMES[slot].slice(0,5)}:00`<=madridDateTimeKey(); }
   function madridTodayKey() {
     const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
     const part=type=>parts.find(item=>item.type===type)?.value||'00';
@@ -122,6 +123,17 @@
     $('bookingConfirmation').classList.add('show'); $('closeBookingConfirmation').focus();
   }
   function closeBookingConfirmation() { $('bookingConfirmation').classList.remove('show'); }
+  function trainerProfileDisplayName(){
+    const labels={'fernando vaquero trainer':'Fernando','salma aparici trainer':'Salma','cesar sendin trainer':'César','antonio sanchez trainer':'Toni','toni':'Toni'};
+    return labels[norm(trainerKey)]||trainerLoginUsername||String(trainerKey||'').replace(/\s+trainer$/i,'');
+  }
+  function updateTrainerIdentity(){
+    const name=trainerProfileDisplayName(),active=Boolean(trainerKey&&name);
+    const badge=$('activeTrainerBadge');if(badge){badge.textContent=active?`Perfil: ${name}`:'';badge.hidden=!active;}
+    const title=$('trainerMenuTitle');if(title)title.textContent=active?'Menú área de entrenadores':'Área de entrenadores';
+    const subtitle=$('trainerMenuSubtitle');if(subtitle)subtitle.textContent=active?`Perfil activo: ${name}`:'Introduce tu usuario y contraseña de entrenador.';
+    const logout=$('logoutTrainer');if(logout)logout.textContent=active?`Cerrar sesión · ${name}`:'Cerrar sesión';
+  }
   function closeMemberCancellation() { $('cancelConfirmation').classList.remove('show'); pendingMemberCancellation=null; }
   function openMemberCancellation(item) {
     pendingMemberCancellation={date:item.dataset.date,slot:Number(item.dataset.slot)};
@@ -130,7 +142,7 @@
     $('cancelConfirmationTime').textContent=TIMES[pendingMemberCancellation.slot];
     $('cancelConfirmation').classList.add('show');$('confirmCancelBooking').focus();
   }
-  function setTrainerPanel(authorized) { $('trainerLogin').hidden=authorized; $('trainerPanel').hidden=!authorized; if(!authorized){trainerKey='';trainerToken='';trainerData=null;$('trainerPassword').value='';historyName='';warningName='';$('trainerHistoryScreen').hidden=true;document.body.classList.remove('trainer-history-open');$('roster').innerHTML='';$('pastRoster').innerHTML='';$('historyMembers').innerHTML='';$('historyDetail').innerHTML='<div class="empty">Selecciona un socio para ver su historial.</div>';$('warningMembers').innerHTML='';$('warningSessions').innerHTML='';} }
+  function setTrainerPanel(authorized) { $('trainerLogin').hidden=authorized; $('trainerPanel').hidden=!authorized; if(!authorized){trainerKey='';trainerToken='';trainerData=null;$('trainerPassword').value='';historyName='';warningName='';$('trainerHistoryScreen').hidden=true;document.body.classList.remove('trainer-history-open');$('roster').innerHTML='';$('pastRoster').innerHTML='';$('historyMembers').innerHTML='';$('historyDetail').innerHTML='<div class="empty">Selecciona un socio para ver su historial.</div>';$('warningMembers').innerHTML='';$('warningSessions').innerHTML='';} updateTrainerIdentity(); }
   async function fetchTrainerData() {
     const {data,error}=await db.rpc('trainer_data',{p_key:trainerKey,p_token:trainerToken}); if(error) throw error;
     trainerData=data||{bookings:[],events:[]}; return trainerData;
@@ -213,7 +225,8 @@
     const items=openSlots.sort((a,b)=>a-b).map(slot=>{
       const count=(trainerData?.bookings||[]).filter(b=>b.class_date===trainerCalendarDate&&Number(b.class_slot)===slot).length;
       const attendance=count>=MAX_CAPACITY?'full':count>0?'has-attendees':'empty';
-      const cls=`trainer-calendar-slot ${attendance} ${trainerCalendarSlot===slot?'selected':''}`;
+      const sessionStarted=classHasStarted(day,slot);
+      const cls=`trainer-calendar-slot ${attendance} ${sessionStarted?'session-closed':''} ${trainerCalendarSlot===slot?'selected':''}`;
       return `<button type="button" class="${cls}" data-calendar-slot="${slot}"><strong>${TIMES[slot]}</strong><small>${count} ${count===1?'persona apuntada':'personas apuntadas'}</small></button>`;
     }).join('');
     let selectedClass='';
