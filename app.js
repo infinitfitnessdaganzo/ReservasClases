@@ -232,7 +232,7 @@
     trainerCalendarMonth=fromIsoDate(todayKey);trainerCalendarMonth.setDate(1);
     trainerCalendarDate=todayKey;trainerCalendarSlot=null;trainerCalendarScheduleDraft=null;
     await loadTrainerCalendarAvailability();
-    renderTrainerCalendar();$('trainerCalendarModal').hidden=false;document.body.classList.add('trainer-calendar-open');$('trainerCalendarOptions').focus();
+    renderTrainerCalendar();$('trainerCalendarModal').hidden=false;document.body.classList.add('trainer-calendar-open');$('trainerCalendarOptions')?.focus();
   }
   function discardTrainerCalendarScheduleDraft(){if(trainerCalendarScheduleDraft===null)return true;if(!window.confirm('Tienes cambios de horarios sin guardar. ¿Quieres descartarlos?'))return false;trainerCalendarScheduleDraft=null;return true;}
   function closeTrainerCalendar() {if(!discardTrainerCalendarScheduleDraft())return;$('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');}
@@ -375,18 +375,21 @@
   };
   function selectTrainerProfile(username,remember=false){
     const select=$('trainerProfile');
-    const option=[...select.options].find(item=>item.value===username);
-    trainerLoginUsername=option?.value||'';
-    select.value=trainerLoginUsername;
-    $('trainerSelectedLabel').textContent=option?`Perfil seleccionado: ${option.textContent}`:'Elige tu perfil para continuar.';
-    $('trainerSelectedLabel').classList.toggle('has-selection',Boolean(option));
-    $('trainerPassword').disabled=!option;
-    $('trainerPassword').placeholder=option?'Introduce tu contraseña':'Selecciona primero tu perfil';
+    const option=select?[...select.options].find(item=>item.value===username):null;
+    const profileButton=select?null:[...document.querySelectorAll('[data-trainer-username]')].find(item=>item.dataset.trainerUsername===username);
+    trainerLoginUsername=option?.value||profileButton?.dataset.trainerUsername||'';
+    if(select)select.value=trainerLoginUsername;
+    document.querySelectorAll('[data-trainer-username]').forEach(item=>{const active=item===profileButton;item.classList.toggle('selected',active);item.setAttribute('aria-pressed',String(active));});
+    const profileLabel=option?.textContent||profileButton?.dataset.trainerLabel;
+    $('trainerSelectedLabel').textContent=profileLabel?`Perfil seleccionado: ${profileLabel}`:'Elige tu perfil para continuar.';
+    $('trainerSelectedLabel').classList.toggle('has-selection',Boolean(profileLabel));
+    $('trainerPassword').disabled=!profileLabel;
+    $('trainerPassword').placeholder=profileLabel?'Introduce tu contraseña':'Selecciona primero tu perfil';
     $('trainerPassword').value='';
     if(remember&&option){try{localStorage.setItem('infinitFitnessDaganzoTrainerUsername',trainerLoginUsername);}catch{}}
   }
-    $('trainerProfile').onchange=e=>selectTrainerProfile(e.target.value,true);
-  if($('trainerOpen'))$('trainerOpen').onclick=()=>{$('trainerModal').classList.add('show');$('trainerProfile').focus();};
+  if($('trainerProfile'))$('trainerProfile').onchange=e=>selectTrainerProfile(e.target.value,true);
+  if($('trainerOpen'))$('trainerOpen').onclick=()=>{$('trainerModal').classList.add('show');($('trainerProfile')||document.querySelector('[data-trainer-username]'))?.focus();};
   $('closeBookingConfirmation').onclick=closeBookingConfirmation;
   $('bookingConfirmation').onclick=e=>{if(e.target===$('bookingConfirmation'))closeBookingConfirmation();};
   $('noticeClose').onclick=closeNotice;
@@ -420,8 +423,8 @@
   $('regularTrainerNav').onclick=handleTrainerNavClick;
   $('closeTrainerHistory').onclick=closeTrainerHistory;
   $('historySearch').oninput=renderMembers;
-  $('trainerCalendarOptions').onclick=()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerView='';renderTrainerView();$('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');$('trainerModal').classList.add('show');$('trainerLogin').hidden=true;$('trainerPanel').hidden=false;};
-  $('trainerBackToCalendar').onclick=async()=>{trainerView='';renderTrainerView();$('trainerModal').classList.remove('show');await openTrainerCalendar();};
+  if($('trainerCalendarOptions'))$('trainerCalendarOptions').onclick=()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerView='';renderTrainerView();$('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');$('trainerModal').classList.add('show');$('trainerLogin').hidden=true;$('trainerPanel').hidden=false;};
+  if($('trainerBackToCalendar'))$('trainerBackToCalendar').onclick=async()=>{trainerView='';renderTrainerView();$('trainerModal').classList.remove('show');await openTrainerCalendar();};
   $('trainerCalendarModal').onclick=e=>{if(e.target===$('trainerCalendarModal')&&!trainerPortal)closeTrainerCalendar();};
   $('trainerCalendarPrev').onclick=async()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerCalendarMonth=new Date(trainerCalendarMonth.getFullYear(),trainerCalendarMonth.getMonth()-1,1);trainerCalendarDate='';trainerCalendarSlot=null;await loadTrainerCalendarAvailability();renderTrainerCalendar();};
   $('trainerCalendarNext').onclick=async()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerCalendarMonth=new Date(trainerCalendarMonth.getFullYear(),trainerCalendarMonth.getMonth()+1,1);trainerCalendarDate='';trainerCalendarSlot=null;await loadTrainerCalendarAvailability();renderTrainerCalendar();};
