@@ -40,9 +40,10 @@
   function isBookable(date) { const today=localDay(new Date()), limit=new Date(today); limit.setDate(limit.getDate()+7); const day=localDay(date); return day>=today && day<=limit; }
   function classStart(date,slot) { const [h,m]=TIMES[slot].slice(0,5).split(':').map(Number); return new Date(date.getFullYear(),date.getMonth(),date.getDate(),h,m); }
   function classBookingClosed(date,slot) {
-    const cutoff=new Date(`${dateKey(date)}T${TIMES[slot].slice(0,5)}:00Z`);
-    cutoff.setUTCMinutes(cutoff.getUTCMinutes()-1);
-    return cutoff.toISOString().slice(0,19)<=madridDateTimeKey();
+    const [hour,minute]=TIMES[slot].slice(0,5).split(':').map(Number);
+    const cutoffMinute=hour*60+minute-10;
+    const cutoff=`${dateKey(date)}T${pad(Math.floor(cutoffMinute/60))}:${pad(cutoffMinute%60)}:00`;
+    return cutoff.slice(0,16)<madridDateTimeKey().slice(0,16);
   }
   function madridDateTimeKey() {
     const nowParts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(new Date());
@@ -50,7 +51,6 @@
     return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}:${part('second')}`;
   }
   function classHasEnded(date,slot) { return `${dateKey(date)}T${END_TIMES[slot]}:00`<madridDateTimeKey(); }
-  function classHasStarted(date,slot) { return `${dateKey(date)}T${TIMES[slot].slice(0,5)}:00`<=madridDateTimeKey(); }
   function madridTodayKey() {
     const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Madrid',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
     const part=type=>parts.find(item=>item.type===type)?.value||'00';
@@ -95,7 +95,7 @@
     $('classlist').innerHTML=openSlots.map(({time,slot})=>{
       const remaining=counts[classKey(dateKey(selected),slot)]??MAX_CAPACITY, bookingClosed=classBookingClosed(selected,slot);
       const full=remaining<=0, low=remaining>0&&remaining<=2;
-      return `<button class="slot ${selectedSlot===slot?'selected':''} ${bookingClosed?'disabled':''} ${full?'full':''} ${low?'low':''}" data-slot="${slot}" ${bookingClosed||full?'disabled':''}><span class="slotleft"><i class="timeicon">◷</i><span><strong>${time}</strong><small>${full?'Clase completa':bookingClosed?'Reserva cerrada':'Entrenamiento en grupo'}</small></span></span><span class="occupancy"><b>${remaining}</b>${remaining===1?'plaza restante':'plazas restantes'}</span></button>`;
+      return `<button class="slot ${selectedSlot===slot?'selected':''} ${bookingClosed?'disabled':''} ${full?'full':''} ${low?'low':''}" data-slot="${slot}" ${bookingClosed||full?'disabled':''}><span class="slotleft"><i class="timeicon">◷</i><span><strong>${time}</strong><small>${full?'Clase completa':bookingClosed?'Clase cerrada':'Entrenamiento en grupo'}</small></span></span><span class="occupancy"><b>${remaining}</b>${remaining===1?'plaza restante':'plazas restantes'}</span></button>`;
     }).join('');
     $('classlist').querySelectorAll('[data-slot]').forEach(button=>button.onclick=()=>{selectedSlot=Number(button.dataset.slot);renderClasses();syncReserveButton();});
   }
@@ -211,12 +211,12 @@
     let selectedClass='';
     if(trainerCalendarSlot!==null){
       const bookings=(trainerData?.bookings||[]).filter(b=>b.class_date===trainerCalendarDate&&Number(b.class_slot)===trainerCalendarSlot).sort((a,b)=>a.member_name.localeCompare(b.member_name,'es',{sensitivity:'base'}));
-      const ended=classHasEnded(day,trainerCalendarSlot),started=classHasStarted(day,trainerCalendarSlot);
+      const ended=classHasEnded(day,trainerCalendarSlot);
       const people=bookings.length?`<div class="trainer-class-names">${bookings.map(booking=>{
         const warned=currentAbsence(booking),warningAction=warned?'undo':'mark';
         const warningLabel=warned?'Anular warning':ended?'Registrar warning':'Warning al finalizar';
         const warningDisabled=!warned&&!ended?'disabled':'';
-        const cancelAction=trainerData?.is_owner===true&&!started?`<button type="button" class="trainer-calendar-action calendar-cancel-button" data-calendar-cancel="${escapeHtml(booking.id)}">Cancelar reserva</button>`:'';
+        const cancelAction=trainerData?.is_owner===true?`<button type="button" class="trainer-calendar-action calendar-cancel-button" data-calendar-cancel="${escapeHtml(booking.id)}">Cancelar reserva</button>`:'';
         return `<div class="trainer-calendar-person"><span class="trainer-calendar-person-name">${escapeHtml(booking.member_name)}${warned?'<small class="calendar-warning-marked">Warning registrado</small>':''}</span><span class="trainer-calendar-actions"><button type="button" class="trainer-calendar-action calendar-warning-button" data-calendar-warning="${escapeHtml(booking.id)}" data-warning-action="${warningAction}" ${warningDisabled}>${warningLabel}</button>${cancelAction}</span></div>`;
       }).join('')}</div>`:'<div class="empty">No hay personas reservadas en esta clase.</div>';
       const activeMembers=[...(trainerData?.members||[])].filter(member=>member.is_active!==false).sort((a,b)=>a.member_name.localeCompare(b.member_name,'es',{sensitivity:'base'}));
@@ -490,8 +490,8 @@
     const cancel=e.target.closest('[data-calendar-cancel]');
     if(cancel){
       if(trainerData?.is_owner!==true){notify('Solo Fernando o Toni pueden cancelar reservas desde el calendario.');return;}
-      if(classHasStarted(fromIsoDate(trainerCalendarDate),trainerCalendarSlot)){notify('No se puede cancelar una reserva cuando la clase ya ha empezado.');return;}
-      if(!window.confirm('¿Quieres cancelar esta reserva?'))return;
+      const classDate=fromIsoDate(trainerCalendarDate),classPassed=classHasEnded(classDate,trainerCalendarSlot);
+      if(!window.confirm(classPassed?'¿Quieres cancelar esta reserva de una clase ya pasada? Se registrará en el historial del socio.':'¿Quieres cancelar esta reserva?'))return;
       const {error}=await db.rpc('trainer_cancel_booking',{p_key:trainerKey,p_token:trainerToken,p_booking_id:cancel.dataset.calendarCancel});
       if(error){showDbError(error);return;}
       await fetchTrainerData();await loadCounts();renderTrainerCalendar();notify('Reserva cancelada y registrada en el historial.');return;
