@@ -431,7 +431,7 @@
   $('trainerCalendarDetails').onclick=async e=>{
     const saveSchedule=e.target.closest('[data-save-calendar-schedule]');
     if(saveSchedule){
-      if(trainerData?.is_owner!==true){notify('Solo Fernando puede gestionar los horarios.');return;}
+      if(trainerData?.is_owner!==true){notify('Solo Fernando o Toni pueden gestionar los horarios.');return;}
       const openSlots=trainerCalendarScheduleDraft??[...$('trainerCalendarDetails').querySelectorAll('[data-calendar-open-slot]:checked')].map(input=>Number(input.dataset.calendarOpenSlot));
       saveSchedule.disabled=true;
       const {error}=await db.rpc('trainer_set_class_schedule',{p_key:trainerKey,p_token:trainerToken,p_class_date:trainerCalendarDate,p_open_slots:openSlots});
@@ -458,7 +458,7 @@
     }
     const cancel=e.target.closest('[data-calendar-cancel]');
     if(cancel){
-      if(trainerData?.is_owner!==true){notify('Solo Fernando puede cancelar reservas desde el calendario.');return;}
+      if(trainerData?.is_owner!==true){notify('Solo Fernando o Toni pueden cancelar reservas desde el calendario.');return;}
       if(classHasStarted(fromIsoDate(trainerCalendarDate),trainerCalendarSlot)){notify('No se puede cancelar una reserva cuando la clase ya ha empezado.');return;}
       if(!window.confirm('¿Quieres cancelar esta reserva?'))return;
       const {error}=await db.rpc('trainer_cancel_booking',{p_key:trainerKey,p_token:trainerToken,p_booking_id:cancel.dataset.calendarCancel});
@@ -467,7 +467,7 @@
     }
     const slot=e.target.closest('[data-calendar-slot]');if(slot){trainerCalendarSlot=Number(slot.dataset.calendarSlot);renderTrainerCalendarDetails();}
   };$('saveScheduleButton').onclick=async()=>{
-    if(trainerData?.is_owner!==true){notify('Solo Fernando puede gestionar los horarios.');return;}
+    if(trainerData?.is_owner!==true){notify('Solo Fernando o Toni pueden gestionar los horarios.');return;}
     const date=$('scheduleDate').value;if(!date){notify('Selecciona una fecha.');return;}
     const openSlots=[...document.querySelectorAll('[data-open-slot]:checked')].map(input=>Number(input.dataset.openSlot));
     const slotsToClose=(trainerData?.bookings||[])
@@ -505,7 +505,7 @@
     button.disabled=false;
   };
   $('addMemberButton').onclick=async()=>{
-    if(trainerData?.is_owner!==true){notify('Solo Fernando puede dar de alta socios.');return;}
+    if(trainerData?.is_owner!==true){notify('Solo Fernando o Toni pueden dar de alta socios.');return;}
     const name=$('newMemberName').value.trim().replace(/\s+/g,' ');
     if(!validName(name)){notify('Escribe el nombre y los dos apellidos del socio.');return;}
     const button=$('addMemberButton');button.disabled=true;
@@ -518,7 +518,7 @@
   $('historyMembers').onclick=async e=>{
     const statusButton=e.target.closest('[data-toggle-member-active]');
     if(statusButton){
-      if(trainerData?.is_owner!==true){notify('Solo Fernando puede activar o desactivar socios.');return;}
+      if(trainerData?.is_owner!==true){notify('Solo Fernando o Toni pueden activar o desactivar socios.');return;}
       const name=statusButton.dataset.toggleMemberActive,active=statusButton.dataset.nextActive==='true';
       statusButton.disabled=true;
       const {error}=await db.rpc('trainer_set_member_active',{p_key:trainerKey,p_token:trainerToken,p_member_name:name,p_is_active:active});
@@ -527,7 +527,7 @@
     }
     const clearOne=e.target.closest('[data-clear-member-history]');
     if(clearOne){
-      if(trainerData?.is_owner!==true){notify('Solo Fernando puede borrar historiales de socios.');return;}
+      if(trainerData?.is_owner!==true){notify('Solo Fernando o Toni pueden borrar historiales de socios.');return;}
       const name=historyName;if(!name)return;
       if(!window.confirm(`Vas a borrar únicamente el historial de «${name}». El socio y sus reservas activas se conservarán. Esta acción no se puede deshacer. ¿Quieres continuar?`))return;
       clearOne.disabled=true;const {error}=await db.rpc('trainer_clear_member_history',{p_key:trainerKey,p_token:trainerToken,p_member_name:name});
@@ -536,7 +536,7 @@
     }
     const deleteOne=e.target.closest('[data-delete-member-history]');
     if(deleteOne){
-      if(trainerData?.is_owner!==true){notify('Solo Fernando puede borrar historiales de socios.');return;}
+      if(trainerData?.is_owner!==true){notify('Solo Fernando o Toni pueden borrar historiales de socios.');return;}
       const name=historyName;if(!name)return;
       if(!window.confirm(`Vas a borrar el socio «${name}», todas sus reservas activas y todo su historial. Esta acción no se puede deshacer. ¿Quieres continuar?`))return;
       deleteOne.disabled=true;const {error}=await db.rpc('trainer_delete_member_history',{p_key:trainerKey,p_token:trainerToken,p_member_name:name});
@@ -545,7 +545,7 @@
     }
     const clearAll=e.target.closest('[data-clear-all-history]');
     if(clearAll){
-      if(trainerData?.is_owner!==true){notify('Solo Fernando puede borrar todos los historiales.');return;}
+      if(trainerData?.is_owner!==true){notify('Solo Fernando o Toni pueden borrar todos los historiales.');return;}
       if(!window.confirm('Vas a borrar todos los historiales de los socios. Se conservarán los socios dados de alta y todas las reservas activas. Esta acción no se puede deshacer. ¿Quieres continuar?'))return;
       clearAll.disabled=true;
       const {error}=await db.rpc('trainer_clear_all_member_history',{p_key:trainerKey,p_token:trainerToken});
