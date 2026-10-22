@@ -8,7 +8,7 @@
   const ready = Boolean(window.supabase?.createClient && config.supabaseUrl && config.supabasePublishableKey && !config.supabaseUrl.includes('PEGA_AQUI') && !config.supabasePublishableKey.includes('PEGA_AQUI'));
   const db = ready ? window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey) : null;
   let view = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  let selected = null, selectedSlot = null, counts = {}, availability = {}, trainerKey = '', trainerToken = '', trainerLoginUsername = '', trainerData = null, trainerView = '', historyName = '', warningName = '';
+  let selected = localDay(new Date()), selectedSlot = null, counts = {}, availability = {}, trainerKey = '', trainerToken = '', trainerLoginUsername = '', trainerData = null, trainerView = '', historyName = '', warningName = '';
   let trainerCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1),trainerCalendarDate='',trainerCalendarSlot=null,trainerCalendarAvailability={},trainerCalendarScheduleDraft=null;
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
