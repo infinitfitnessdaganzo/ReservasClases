@@ -9,7 +9,7 @@
   const ready = Boolean(window.supabase?.createClient && config.supabaseUrl && config.supabasePublishableKey && !config.supabaseUrl.includes('PEGA_AQUI') && !config.supabasePublishableKey.includes('PEGA_AQUI'));
   const db = ready ? window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey) : null;
   let view = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  let selected = localDay(new Date()), selectedSlot = null, counts = {}, availability = {}, trainerKey = '', trainerToken = '', trainerLoginUsername = '', trainerData = null, trainerView = '', historyName = '', warningName = '', pendingMemberCancellation = null;
+  let selected = localDay(new Date()), selectedSlot = null, counts = {}, availability = {}, trainerKey = '', trainerToken = '', trainerLoginUsername = '', trainerData = null, trainerView = '', historyName = '', warningName = '', pendingMemberCancellation = null, myBookingsTimer = null, myBookingsRequest = 0;
   let trainerCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1),trainerCalendarDate='',trainerCalendarSlot=null,trainerCalendarAvailability={},trainerCalendarScheduleDraft=null;
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -346,8 +346,16 @@
   try{$('memberName').value=localStorage.getItem(MEMBER_NAME_STORAGE_KEY)||'';}catch{}
   $('memberName').oninput=()=>{
     try{const name=$('memberName').value.trim().replace(/\s+/g,' ');if(name)localStorage.setItem(MEMBER_NAME_STORAGE_KEY,name);else localStorage.removeItem(MEMBER_NAME_STORAGE_KEY);}catch{}
-    updateRulesContactLinks();syncReserveButton();
+    updateRulesContactLinks();syncReserveButton();scheduleMyBookingsLookup();
   };
+  function scheduleMyBookingsLookup(){
+    if(myBookingsTimer)clearTimeout(myBookingsTimer);
+    const request=++myBookingsRequest,name=$('memberName').value.trim().replace(/\s+/g,' '),box=$('myBookings');
+    if(!validName(name)){box.innerHTML='<div class="empty">Escribe tu nombre y tus dos apellidos para ver tus reservas.</div>';return;}
+    box.innerHTML='<div class="empty">Buscando tus reservas…</div>';
+    myBookingsTimer=setTimeout(()=>loadMyBookings(request),450);
+  }
+  scheduleMyBookingsLookup();
   $('reserve').onclick=async()=>{
     if(!ready||selectedSlot===null||!selected)return;
     if(!validName($('memberName').value)){notify('Escribe tu nombre y tus dos apellidos.');return;}
@@ -357,20 +365,21 @@
     const name=$('memberName').value.trim().replace(/\s+/g,' '); $('reserve').disabled=true;
     const {error}=await db.rpc('reserve_class',{p_class_date:dateKey(selected),p_slot:selectedSlot,p_member_name:name});
     if(error){const message=String(error.message||'');if(message.includes('SOCIO_NO_ENCONTRADO'))showMemberNotFound(name);else if(message.includes('SOCIO_BLOQUEADO'))notify(message.replace('SOCIO_BLOQUEADO:','').trim());else if(message.includes('SOCIO_INACTIVO'))notify(message.replace('SOCIO_INACTIVO:','').trim());else if(message.includes('RESERVA_CERRADA'))notify(message.replace('RESERVA_CERRADA:','').trim());else showDbError(error);await loadCounts();return;}
-    selectedSlot=null;await loadCounts();render();openBookingConfirmation(bookedDate,bookedSlot);
+    selectedSlot=null;await loadCounts();render();await loadMyBookings();openBookingConfirmation(bookedDate,bookedSlot);
   };
-  async function loadMyBookings() {
-    if(!ready){notify('Falta conectar la base de datos compartida.');return;}
+  async function loadMyBookings(request=++myBookingsRequest) {
+    if(myBookingsTimer){clearTimeout(myBookingsTimer);myBookingsTimer=null;}
+    if(!ready){$('myBookings').innerHTML='<div class="empty">Las reservas compartidas no están disponibles ahora.</div>';return;}
     const name=$('memberName').value.trim().replace(/\s+/g,' ');
-    if(!validName(name)){notify('Escribe tu nombre y tus dos apellidos tal como los usaste al reservar.');return;}
+    if(!validName(name))return;
     const box=$('myBookings'); box.innerHTML='<div class="empty">Buscando tus reservas…</div>';
     const {data,error}=await db.rpc('my_confirmed_bookings',{p_member_name:name});
+    if(request!==myBookingsRequest||norm($('memberName').value)!==norm(name))return;
     if(error){box.innerHTML='';if(error.code==='PGRST202'||String(error.message||'').includes('my_confirmed_bookings'))notify('Falta actualizar Supabase: ejecuta el schema.sql actualizado en SQL Editor.');else showDbError(error);return;}
     const bookings=(data||[]).filter(b=>!classHasEnded(fromIsoDate(b.class_date),Number(b.class_slot)));
     if(!bookings.length){box.innerHTML='<div class="empty">No tienes reservas pendientes. Las clases que ya han terminado no aparecen aquí.</div>';return;}
     box.innerHTML='<div class="rosterclass">Tus reservas confirmadas</div>'+bookings.map(b=>`<div class="my-booking" data-date="${escapeHtml(b.class_date)}" data-slot="${Number(b.class_slot)}"><strong>${escapeHtml(displayDate(fromIsoDate(b.class_date)))} · ${TIMES[Number(b.class_slot)]}</strong><button class="my-booking-cancel" type="button" data-cancel-booking aria-label="Cancelar reserva del ${escapeHtml(displayDate(fromIsoDate(b.class_date)))} a las ${TIMES[Number(b.class_slot)]}">×</button></div>`).join('');
   }
-  $('showMyBookings').onclick=loadMyBookings;
   $('myBookings').onclick=e=>{
     const button=e.target.closest('[data-cancel-booking]'); if(!button)return;
     openMemberCancellation(button.closest('.my-booking'));
