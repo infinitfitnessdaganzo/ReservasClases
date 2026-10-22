@@ -9,7 +9,7 @@
   const ready = Boolean(window.supabase?.createClient && config.supabaseUrl && config.supabasePublishableKey && !config.supabaseUrl.includes('PEGA_AQUI') && !config.supabasePublishableKey.includes('PEGA_AQUI'));
   const db = ready ? window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey) : null;
   let view = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  let selected = localDay(new Date()), selectedSlot = null, counts = {}, availability = {}, trainerKey = '', trainerToken = '', trainerLoginUsername = '', trainerData = null, trainerView = '', historyName = '', warningName = '';
+  let selected = localDay(new Date()), selectedSlot = null, counts = {}, availability = {}, trainerKey = '', trainerToken = '', trainerLoginUsername = '', trainerData = null, trainerView = '', historyName = '', warningName = '', pendingMemberCancellation = null;
   let trainerCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1),trainerCalendarDate='',trainerCalendarSlot=null,trainerCalendarAvailability={},trainerCalendarScheduleDraft=null;
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -122,6 +122,14 @@
     $('bookingConfirmation').classList.add('show'); $('closeBookingConfirmation').focus();
   }
   function closeBookingConfirmation() { $('bookingConfirmation').classList.remove('show'); }
+  function closeMemberCancellation() { $('cancelConfirmation').classList.remove('show'); pendingMemberCancellation=null; }
+  function openMemberCancellation(item) {
+    pendingMemberCancellation={date:item.dataset.date,slot:Number(item.dataset.slot)};
+    const day=fromIsoDate(pendingMemberCancellation.date);
+    $('cancelConfirmationDate').textContent=displayDate(day,{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    $('cancelConfirmationTime').textContent=TIMES[pendingMemberCancellation.slot];
+    $('cancelConfirmation').classList.add('show');$('confirmCancelBooking').focus();
+  }
   function setTrainerPanel(authorized) { $('trainerLogin').hidden=authorized; $('trainerPanel').hidden=!authorized; if(!authorized){trainerKey='';trainerToken='';trainerData=null;$('trainerPassword').value='';historyName='';warningName='';$('trainerHistoryScreen').hidden=true;document.body.classList.remove('trainer-history-open');$('roster').innerHTML='';$('pastRoster').innerHTML='';$('historyMembers').innerHTML='';$('historyDetail').innerHTML='<div class="empty">Selecciona un socio para ver su historial.</div>';$('warningMembers').innerHTML='';$('warningSessions').innerHTML='';} }
   async function fetchTrainerData() {
     const {data,error}=await db.rpc('trainer_data',{p_key:trainerKey,p_token:trainerToken}); if(error) throw error;
@@ -360,17 +368,23 @@
     if(error){box.innerHTML='';if(error.code==='PGRST202'||String(error.message||'').includes('my_confirmed_bookings'))notify('Falta actualizar Supabase: ejecuta el schema.sql actualizado en SQL Editor.');else showDbError(error);return;}
     const bookings=(data||[]).filter(b=>!classHasEnded(fromIsoDate(b.class_date),Number(b.class_slot)));
     if(!bookings.length){box.innerHTML='<div class="empty">No tienes reservas pendientes. Las clases que ya han terminado no aparecen aquí.</div>';return;}
-    box.innerHTML='<div class="rosterclass">Tus reservas confirmadas</div>'+bookings.map(b=>`<div class="my-booking" data-date="${escapeHtml(b.class_date)}" data-slot="${Number(b.class_slot)}"><strong>${escapeHtml(displayDate(fromIsoDate(b.class_date)))} · ${TIMES[Number(b.class_slot)]}</strong><button class="secondary" type="button" data-cancel-booking>Cancelar esta reserva</button></div>`).join('');
+    box.innerHTML='<div class="rosterclass">Tus reservas confirmadas</div>'+bookings.map(b=>`<div class="my-booking" data-date="${escapeHtml(b.class_date)}" data-slot="${Number(b.class_slot)}"><strong>${escapeHtml(displayDate(fromIsoDate(b.class_date)))} · ${TIMES[Number(b.class_slot)]}</strong><button class="my-booking-cancel" type="button" data-cancel-booking aria-label="Cancelar reserva del ${escapeHtml(displayDate(fromIsoDate(b.class_date)))} a las ${TIMES[Number(b.class_slot)]}">×</button></div>`).join('');
   }
   $('showMyBookings').onclick=loadMyBookings;
-  $('myBookings').onclick=async e=>{
+  $('myBookings').onclick=e=>{
     const button=e.target.closest('[data-cancel-booking]'); if(!button)return;
+    openMemberCancellation(button.closest('.my-booking'));
+  };
+  $('cancelConfirmationNo').onclick=closeMemberCancellation;
+  $('cancelConfirmation').onclick=e=>{if(e.target===$('cancelConfirmation'))closeMemberCancellation();};
+  $('confirmCancelBooking').onclick=async()=>{
+    if(!pendingMemberCancellation)return;
     const name=$('memberName').value.trim().replace(/\s+/g,' ');
     if(!validName(name)){notify('Vuelve a escribir el nombre y los dos apellidos de la reserva.');return;}
-    button.disabled=true;
-    const item=button.closest('.my-booking');
-    const {data,error}=await db.rpc('cancel_class',{p_class_date:item.dataset.date,p_slot:Number(item.dataset.slot),p_member_name:name});
-    if(error){if(String(error.message||'').includes('CANCELACION_MENOS_DE_1HORA'))notify('No puedes cancelar la reserva porque falta menos de una hora para la clase.');else showDbError(error);button.disabled=false;return;}
+    const button=$('confirmCancelBooking');button.disabled=true;
+    const {data,error}=await db.rpc('cancel_class',{p_class_date:pendingMemberCancellation.date,p_slot:pendingMemberCancellation.slot,p_member_name:name});
+    if(error){closeMemberCancellation();if(String(error.message||'').includes('CANCELACION_MENOS_DE_1HORA'))notify('No puedes cancelar la reserva porque falta menos de una hora para la clase.');else showDbError(error);button.disabled=false;return;}
+    closeMemberCancellation();button.disabled=false;
     notify(data?.late?'Cancelación registrada. Se avisará a los entrenadores.':'Reserva cancelada.');
     await loadMyBookings(); await loadCounts(); render();
   };
@@ -395,7 +409,7 @@
   $('bookingConfirmation').onclick=e=>{if(e.target===$('bookingConfirmation'))closeBookingConfirmation();};
   $('noticeClose').onclick=closeNotice;
   $('notice').onclick=e=>{if(e.target===$('notice'))closeNotice();};
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeBookingConfirmation();closeNotice();if(trainerPortal){if(!$('trainerCalendarModal').hidden)$('trainerCalendarOptions').click();closeTrainerHistory();}else{closeTrainerCalendar();closeTrainerHistory();}}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('cancelConfirmation').classList.contains('show')){closeMemberCancellation();return;}closeBookingConfirmation();closeNotice();if(trainerPortal){if(!$('trainerCalendarModal').hidden)$('trainerCalendarOptions').click();closeTrainerHistory();}else{closeTrainerCalendar();closeTrainerHistory();}}});
   $('closeModal').onclick=()=>{if(trainerPortal){if(trainerKey){$('trainerModal').classList.remove('show');openTrainerCalendar();}else $('trainerModal').classList.add('show');return;}$('trainerModal').classList.remove('show');setTrainerPanel(false);};
   $('trainerModal').onclick=e=>{if(e.target===$('trainerModal')){if(trainerPortal){if(trainerKey){$('trainerModal').classList.remove('show');openTrainerCalendar();}else $('trainerModal').classList.add('show');return;}$('trainerModal').classList.remove('show');setTrainerPanel(false);}};
   try{const saved=localStorage.getItem('infinitFitnessDaganzoTrainerUsername')||'';const oldNames={'FernandoVaquero':'Fernando','FernandoVaquero01':'Fernando','SalmaAparici':'Salma','CésarSendín':'César','AntonioSánchez':'Toni'};selectTrainerProfile(oldNames[saved]||saved);}catch{}
