@@ -3,6 +3,7 @@
   const END_TIMES = ['10:00', '18:30', '21:00'];
   const MAX_CAPACITY = 6;
   const MEMBER_NAME_STORAGE_KEY = 'infinitFitnessDaganzoMemberName';
+  const TRAINER_SESSION_STORAGE_KEY = 'infinitFitnessDaganzoTrainerSession';
   const config = window.GYM_CONFIG || {};
   const trainerPortal = document.body.dataset.portal === 'trainers';
   const ready = Boolean(window.supabase?.createClient && config.supabaseUrl && config.supabasePublishableKey && !config.supabaseUrl.includes('PEGA_AQUI') && !config.supabasePublishableKey.includes('PEGA_AQUI'));
@@ -409,11 +410,29 @@
       if(error)throw error;
       trainerKey=data?.trainer_name||'';trainerToken=data?.token||'';
       if(!trainerKey||!trainerToken)throw new Error('No se recibió una sesión válida.');
+      if(trainerPortal){try{localStorage.setItem(TRAINER_SESSION_STORAGE_KEY,JSON.stringify({trainerKey,trainerToken}));}catch{}}
       await fetchTrainerData();trainerView='';setTrainerPanel(true);renderTrainerView();
       if(trainerPortal){$('trainerModal').classList.remove('show');await openTrainerCalendar();}
-    }catch(error){console.error('No se pudo validar el entrenador:',error);notify('Usuario o contraseña incorrectos.');trainerKey='';trainerToken='';}
+    }catch(error){console.error('No se pudo validar el entrenador:',error);if(trainerPortal){try{localStorage.removeItem(TRAINER_SESSION_STORAGE_KEY);}catch{}}notify('Usuario o contraseña incorrectos.');trainerKey='';trainerToken='';}
     finally{$('trainerPassword').value='';loginButton.disabled=false;}
   };
+  async function restoreTrainerSession(){
+    if(!trainerPortal||!ready)return;
+    let saved=null;
+    try{saved=JSON.parse(localStorage.getItem(TRAINER_SESSION_STORAGE_KEY)||'null');}catch{}
+    if(!saved?.trainerKey||!saved?.trainerToken)return;
+    trainerKey=saved.trainerKey;trainerToken=saved.trainerToken;
+    try{
+      await fetchTrainerData();
+      trainerView='';setTrainerPanel(true);renderTrainerView();
+      $('trainerModal').classList.remove('show');
+      await openTrainerCalendar();
+    }catch(error){
+      console.warn('La sesión guardada ya no es válida:',error);
+      try{localStorage.removeItem(TRAINER_SESSION_STORAGE_KEY);}catch{}
+      setTrainerPanel(false);$('trainerModal').classList.add('show');
+    }
+  }
   $('trainerPassword').onkeydown=e=>{if(e.key==='Enter')window.gymTrainerLogin();};
   const handleTrainerNavClick=e=>{
     if(e.target.closest('[data-open-trainer-calendar]')){$('trainerModal').classList.remove('show');openTrainerCalendar();return;}
@@ -523,7 +542,15 @@
     $('newMemberName').value='';await fetchTrainerData();renderTrainerView();notify(`${name} ya puede reservar clases.`);button.disabled=false;
   };
   $('newMemberName').onkeydown=e=>{if(e.key==='Enter')$('addMemberButton').click();};
-  $('logoutTrainer').onclick=()=>{closeTrainerCalendar();setTrainerPanel(false);if(trainerPortal)$('trainerModal').classList.add('show');};
+  $('logoutTrainer').onclick=async()=>{
+    if(trainerCalendarScheduleDraft!==null&&!window.confirm('Hay cambios de horario sin guardar. ¿Quieres cerrar sesión y descartarlos?'))return;
+    trainerCalendarScheduleDraft=null;
+    const oldKey=trainerKey,oldToken=trainerToken;
+    if(trainerPortal){try{localStorage.removeItem(TRAINER_SESSION_STORAGE_KEY);}catch{}}
+    if(ready&&oldKey&&oldToken){const {error}=await db.rpc('trainer_logout',{p_key:oldKey,p_token:oldToken});if(error)console.warn('No se pudo invalidar la sesión en el servidor:',error);}
+    $('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');
+    setTrainerPanel(false);if(trainerPortal)$('trainerModal').classList.add('show');
+  };
   $('historyMembers').onclick=async e=>{
     const statusButton=e.target.closest('[data-toggle-member-active]');
     if(statusButton){
@@ -590,6 +617,7 @@
   $('roster').onclick=handleRosterAction;
   $('pastRoster').onclick=handleRosterAction;
   if(trainerPortal)$('trainerModal').classList.add('show');
+  if(trainerPortal)restoreTrainerSession();
   updateRulesContactLinks();
   render();
   if(ready)loadCounts();
