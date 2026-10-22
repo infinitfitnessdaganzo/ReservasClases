@@ -7,7 +7,7 @@
   const db = ready ? window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey) : null;
   let view = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let selected = null, selectedSlot = null, counts = {}, availability = {}, trainerKey = '', trainerData = null, trainerView = '', historyName = '', warningName = '';
-  let trainerCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1),trainerCalendarDate='',trainerCalendarSlot=null,trainerCalendarAvailability={};
+  let trainerCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1),trainerCalendarDate='',trainerCalendarSlot=null,trainerCalendarAvailability={},trainerCalendarScheduleDraft=null;
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
   const dateKey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -190,9 +190,12 @@
     const details=$('trainerCalendarDetails');
     if(!trainerCalendarDate){details.innerHTML='<div class="empty">Selecciona un día para ver sus clases.</div>';return;}
     const day=fromIsoDate(trainerCalendarDate);
-    const openSlots=[...new Set([...(trainerCalendarAvailability[trainerCalendarDate]||[]),...(trainerData?.bookings||[]).filter(b=>b.class_date===trainerCalendarDate).map(b=>Number(b.class_slot))])];
+    const scheduledSlots=trainerCalendarAvailability[trainerCalendarDate]||[];
+    const openSlots=[...new Set([...scheduledSlots,...(trainerData?.bookings||[]).filter(b=>b.class_date===trainerCalendarDate).map(b=>Number(b.class_slot))])];
     const heading=`<h3>${escapeHtml(displayDate(day,{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}</h3>`;
-    if(!openSlots.length){details.innerHTML=`${heading}<div class="empty">No hay clases programadas este día.</div>`;return;}
+    const draftSlots=trainerCalendarScheduleDraft??scheduledSlots;
+    const scheduleManager=trainerData?.is_owner===true?`<div class="trainer-calendar-schedule"><h4>Gestionar sesiones de este día</h4><p>Activa o desactiva los horarios, incluidos sábados y domingos.</p><div class="trainer-calendar-schedule-options">${TIMES.map((time,slot)=>`<label class="trainer-calendar-schedule-option"><input type="checkbox" data-calendar-open-slot="${slot}" ${draftSlots.includes(slot)?'checked':''}><span>${time}</span></label>`).join('')}</div><button type="button" class="primary calendar-save-schedule" data-save-calendar-schedule>Guardar horarios</button><small>Para cerrar una sesión que ya tiene reservas, cancélalas primero.</small></div>`:'';
+    if(!openSlots.length){details.innerHTML=`${heading}${trainerData?.is_owner===true?'':'<div class="empty">No hay clases programadas este día.</div>'}${scheduleManager}`;return;}
     const items=openSlots.sort((a,b)=>a-b).map(slot=>{
       const count=(trainerData?.bookings||[]).filter(b=>b.class_date===trainerCalendarDate&&Number(b.class_slot)===slot).length;
       const cls=`trainer-calendar-slot ${trainerCalendarSlot===slot?'selected':''}`;
@@ -214,18 +217,19 @@
       const addBooking=canAdd?`<div class="trainer-calendar-add"><label class="fieldlabel" for="trainerCalendarMember">Añadir reserva para un socio activo</label><div class="trainer-calendar-add-row"><select class="textinput" id="trainerCalendarMember" ${activeMembers.length?'':'disabled'}><option value="">Selecciona un socio</option>${activeMembers.map(member=>`<option value="${escapeHtml(member.member_name)}">${escapeHtml(member.member_name)}</option>`).join('')}</select><button type="button" class="primary calendar-add-button" data-calendar-add-booking ${activeMembers.length?'':'disabled'}>Añadir reserva</button></div>${activeMembers.length?'':'<small class="trainer-calendar-add-note">No hay socios activos en el registro.</small>'}</div>`:'';
       selectedClass=`${people}${addBooking}`;
     }
-    details.innerHTML=`${heading}<div class="trainer-calendar-slots">${items}</div>${selectedClass}`;
+    details.innerHTML=`${heading}<div class="trainer-calendar-slots">${items}</div>${selectedClass}${scheduleManager}`;
   }
   async function openTrainerCalendar() {
     if(!trainerKey)return;
     try{await fetchTrainerData();}catch(error){showDbError(error);}
     const todayKey=madridTodayKey();
     trainerCalendarMonth=fromIsoDate(todayKey);trainerCalendarMonth.setDate(1);
-    trainerCalendarDate=todayKey;trainerCalendarSlot=null;
+    trainerCalendarDate=todayKey;trainerCalendarSlot=null;trainerCalendarScheduleDraft=null;
     await loadTrainerCalendarAvailability();
     renderTrainerCalendar();$('trainerCalendarModal').hidden=false;document.body.classList.add('trainer-calendar-open');$('closeTrainerCalendar').focus();
   }
-  function closeTrainerCalendar() {$('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');}
+  function discardTrainerCalendarScheduleDraft(){if(trainerCalendarScheduleDraft===null)return true;if(!window.confirm('Tienes cambios de horarios sin guardar. ¿Quieres descartarlos?'))return false;trainerCalendarScheduleDraft=null;return true;}
+  function closeTrainerCalendar() {if(!discardTrainerCalendarScheduleDraft())return;$('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');}
   function trainerMemberNames() {
     const names=new Map();
     (trainerData?.members||[]).forEach(m=>{if(!names.has(norm(m.member_name)))names.set(norm(m.member_name),m.member_name)});
@@ -359,10 +363,29 @@
   $('regularTrainerNav').onclick=handleTrainerNavClick;
   $('closeTrainerCalendar').onclick=closeTrainerCalendar;
   $('trainerCalendarModal').onclick=e=>{if(e.target===$('trainerCalendarModal'))closeTrainerCalendar();};
-  $('trainerCalendarPrev').onclick=async()=>{trainerCalendarMonth=new Date(trainerCalendarMonth.getFullYear(),trainerCalendarMonth.getMonth()-1,1);trainerCalendarDate='';trainerCalendarSlot=null;await loadTrainerCalendarAvailability();renderTrainerCalendar();};
-  $('trainerCalendarNext').onclick=async()=>{trainerCalendarMonth=new Date(trainerCalendarMonth.getFullYear(),trainerCalendarMonth.getMonth()+1,1);trainerCalendarDate='';trainerCalendarSlot=null;await loadTrainerCalendarAvailability();renderTrainerCalendar();};
-  $('trainerCalendarDays').onclick=e=>{const button=e.target.closest('[data-calendar-day]');if(!button)return;trainerCalendarDate=button.dataset.calendarDay;trainerCalendarSlot=null;renderTrainerCalendar();};
+  $('trainerCalendarPrev').onclick=async()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerCalendarMonth=new Date(trainerCalendarMonth.getFullYear(),trainerCalendarMonth.getMonth()-1,1);trainerCalendarDate='';trainerCalendarSlot=null;await loadTrainerCalendarAvailability();renderTrainerCalendar();};
+  $('trainerCalendarNext').onclick=async()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerCalendarMonth=new Date(trainerCalendarMonth.getFullYear(),trainerCalendarMonth.getMonth()+1,1);trainerCalendarDate='';trainerCalendarSlot=null;await loadTrainerCalendarAvailability();renderTrainerCalendar();};
+  $('trainerCalendarDays').onclick=e=>{const button=e.target.closest('[data-calendar-day]');if(!button)return;if(button.dataset.calendarDay!==trainerCalendarDate&&!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerCalendarDate=button.dataset.calendarDay;trainerCalendarSlot=null;renderTrainerCalendar();};
+  $('trainerCalendarDetails').onchange=e=>{
+    const input=e.target.closest('[data-calendar-open-slot]');if(!input)return;
+    const slots=new Set(trainerCalendarScheduleDraft??(trainerCalendarAvailability[trainerCalendarDate]||[]));
+    const slot=Number(input.dataset.calendarOpenSlot);
+    if(input.checked)slots.add(slot);else slots.delete(slot);
+    trainerCalendarScheduleDraft=[...slots];
+  };
   $('trainerCalendarDetails').onclick=async e=>{
+    const saveSchedule=e.target.closest('[data-save-calendar-schedule]');
+    if(saveSchedule){
+      if(trainerData?.is_owner!==true){notify('Solo Fernando puede gestionar los horarios.');return;}
+      const openSlots=trainerCalendarScheduleDraft??[...$('trainerCalendarDetails').querySelectorAll('[data-calendar-open-slot]:checked')].map(input=>Number(input.dataset.calendarOpenSlot));
+      saveSchedule.disabled=true;
+      const {error}=await db.rpc('trainer_set_class_schedule',{p_key:trainerKey,p_class_date:trainerCalendarDate,p_open_slots:openSlots});
+      if(error){showDbError(error);saveSchedule.disabled=false;return;}
+      trainerCalendarScheduleDraft=null;
+      await loadTrainerCalendarAvailability();
+      if(trainerCalendarSlot!==null&&!(trainerCalendarAvailability[trainerCalendarDate]||[]).includes(trainerCalendarSlot))trainerCalendarSlot=null;
+      renderTrainerCalendar();notify('Horarios guardados para este día.');return;
+    }
     const addBooking=e.target.closest('[data-calendar-add-booking]');
     if(addBooking){
       const memberName=$('trainerCalendarMember')?.value||'';
