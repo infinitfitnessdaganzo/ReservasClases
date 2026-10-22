@@ -229,7 +229,7 @@
     trainerCalendarMonth=fromIsoDate(todayKey);trainerCalendarMonth.setDate(1);
     trainerCalendarDate=todayKey;trainerCalendarSlot=null;trainerCalendarScheduleDraft=null;
     await loadTrainerCalendarAvailability();
-    renderTrainerCalendar();$('trainerCalendarModal').hidden=false;document.body.classList.add('trainer-calendar-open');$('closeTrainerCalendar').focus();
+    renderTrainerCalendar();$('trainerCalendarModal').hidden=false;document.body.classList.add('trainer-calendar-open');$('trainerCalendarOptions').focus();
   }
   function discardTrainerCalendarScheduleDraft(){if(trainerCalendarScheduleDraft===null)return true;if(!window.confirm('Tienes cambios de horarios sin guardar. ¿Quieres descartarlos?'))return false;trainerCalendarScheduleDraft=null;return true;}
   function closeTrainerCalendar() {if(!discardTrainerCalendarScheduleDraft())return;$('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');}
@@ -414,7 +414,6 @@
   $('regularTrainerNav').onclick=handleTrainerNavClick;
   $('closeTrainerHistory').onclick=closeTrainerHistory;
   $('historySearch').oninput=renderMembers;
-  $('closeTrainerCalendar').onclick=()=>{if(trainerPortal)$('trainerCalendarOptions').click();else closeTrainerCalendar();};
   $('trainerCalendarOptions').onclick=()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;$('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');$('trainerModal').classList.add('show');$('trainerLogin').hidden=true;$('trainerPanel').hidden=false;};
   $('trainerBackToCalendar').onclick=async()=>{$('trainerModal').classList.remove('show');await openTrainerCalendar();};
   $('trainerCalendarModal').onclick=e=>{if(e.target===$('trainerCalendarModal')&&!trainerPortal)closeTrainerCalendar();};
