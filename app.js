@@ -367,25 +367,26 @@
     await loadMyBookings(); await loadCounts(); render();
   };
   function selectTrainerProfile(username,remember=false){
-    const button=[...document.querySelectorAll('[data-trainer-username]')].find(item=>item.dataset.trainerUsername===username);
-    trainerLoginUsername=button?.dataset.trainerUsername||'';
-    document.querySelectorAll('[data-trainer-username]').forEach(item=>{const active=item===button;item.classList.toggle('selected',active);item.setAttribute('aria-pressed',String(active));});
-    $('trainerSelectedLabel').textContent=button?`Perfil seleccionado: ${button.dataset.trainerLabel}`:'Elige tu perfil para continuar.';
-    $('trainerSelectedLabel').classList.toggle('has-selection',Boolean(button));
-    $('trainerPassword').disabled=!button;
-    $('trainerPassword').placeholder=button?'Introduce tu contraseña':'Selecciona primero tu perfil';
+    const select=$('trainerProfile');
+    const option=[...select.options].find(item=>item.value===username);
+    trainerLoginUsername=option?.value||'';
+    select.value=trainerLoginUsername;
+    $('trainerSelectedLabel').textContent=option?`Perfil seleccionado: ${option.textContent}`:'Elige tu perfil para continuar.';
+    $('trainerSelectedLabel').classList.toggle('has-selection',Boolean(option));
+    $('trainerPassword').disabled=!option;
+    $('trainerPassword').placeholder=option?'Introduce tu contraseña':'Selecciona primero tu perfil';
     $('trainerPassword').value='';
-    if(remember&&button){try{localStorage.setItem('infinitFitnessDaganzoTrainerUsername',trainerLoginUsername);}catch{}}
+    if(remember&&option){try{localStorage.setItem('infinitFitnessDaganzoTrainerUsername',trainerLoginUsername);}catch{}}
   }
-  if($('trainerOpen'))$('trainerOpen').onclick=()=>{$('trainerModal').classList.add('show');(document.querySelector('.trainer-choice-button.selected')||$('trainerChoiceFernando')).focus();};
+    $('trainerProfile').onchange=e=>selectTrainerProfile(e.target.value,true);
+  if($('trainerOpen'))$('trainerOpen').onclick=()=>{$('trainerModal').classList.add('show');$('trainerProfile').focus();};
   $('closeBookingConfirmation').onclick=closeBookingConfirmation;
   $('bookingConfirmation').onclick=e=>{if(e.target===$('bookingConfirmation'))closeBookingConfirmation();};
   $('noticeClose').onclick=closeNotice;
   $('notice').onclick=e=>{if(e.target===$('notice'))closeNotice();};
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeBookingConfirmation();closeNotice();closeTrainerCalendar();closeTrainerHistory();}});
-  $('closeModal').onclick=()=>{if(trainerPortal){setTrainerPanel(false);$('trainerModal').classList.add('show');return;}$('trainerModal').classList.remove('show');setTrainerPanel(false);};
-  $('trainerModal').onclick=e=>{if(e.target===$('trainerModal')){if(trainerPortal){setTrainerPanel(false);$('trainerModal').classList.add('show');return;}$('trainerModal').classList.remove('show');setTrainerPanel(false);}};
-  document.querySelectorAll('[data-trainer-username]').forEach(button=>button.onclick=()=>selectTrainerProfile(button.dataset.trainerUsername,true));
+  $('closeModal').onclick=()=>{if(trainerPortal){if(trainerKey){$('trainerModal').classList.remove('show');openTrainerCalendar();}else $('trainerModal').classList.add('show');return;}$('trainerModal').classList.remove('show');setTrainerPanel(false);};
+  $('trainerModal').onclick=e=>{if(e.target===$('trainerModal')){if(trainerPortal){if(trainerKey){$('trainerModal').classList.remove('show');openTrainerCalendar();}else $('trainerModal').classList.add('show');return;}$('trainerModal').classList.remove('show');setTrainerPanel(false);}};
   try{const saved=localStorage.getItem('infinitFitnessDaganzoTrainerUsername')||'';const oldNames={'FernandoVaquero':'Fernando','FernandoVaquero01':'Fernando','SalmaAparici':'Salma','CésarSendín':'César','AntonioSánchez':'Toni'};selectTrainerProfile(oldNames[saved]||saved);}catch{}
   window.gymTrainerLogin=async()=>{
     if(!ready){notify('Primero hay que configurar la base de datos compartida.');return;}
@@ -398,13 +399,14 @@
       if(error)throw error;
       trainerKey=data?.trainer_name||'';trainerToken=data?.token||'';
       if(!trainerKey||!trainerToken)throw new Error('No se recibió una sesión válida.');
-      await fetchTrainerData();trainerView='';setTrainerPanel(true);renderTrainerView();if(trainerPortal){$('trainerModal').classList.add('show');await openTrainerCalendar();}
+      await fetchTrainerData();trainerView='';setTrainerPanel(true);renderTrainerView();
+      if(trainerPortal){$('trainerModal').classList.remove('show');await openTrainerCalendar();}
     }catch(error){console.error('No se pudo validar el entrenador:',error);notify('Usuario o contraseña incorrectos.');trainerKey='';trainerToken='';}
     finally{$('trainerPassword').value='';loginButton.disabled=false;}
   };
   $('trainerPassword').onkeydown=e=>{if(e.key==='Enter')window.gymTrainerLogin();};
   const handleTrainerNavClick=e=>{
-    if(e.target.closest('[data-open-trainer-calendar]')){openTrainerCalendar();return;}
+    if(e.target.closest('[data-open-trainer-calendar]')){$('trainerModal').classList.remove('show');openTrainerCalendar();return;}
     const button=e.target.closest('[data-trainer-view]');if(button){if(button.dataset.trainerView==='history')openTrainerHistory();else changeTrainerView(button.dataset.trainerView);}
   };
   $('ownerTrainerNav').onclick=handleTrainerNavClick;
@@ -412,6 +414,8 @@
   $('closeTrainerHistory').onclick=closeTrainerHistory;
   $('historySearch').oninput=renderMembers;
   $('closeTrainerCalendar').onclick=closeTrainerCalendar;
+  $('trainerCalendarOptions').onclick=()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;$('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');$('trainerModal').classList.add('show');$('trainerLogin').hidden=true;$('trainerPanel').hidden=false;};
+  $('trainerBackToCalendar').onclick=async()=>{$('trainerModal').classList.remove('show');await openTrainerCalendar();};
   $('trainerCalendarModal').onclick=e=>{if(e.target===$('trainerCalendarModal'))closeTrainerCalendar();};
   $('trainerCalendarPrev').onclick=async()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerCalendarMonth=new Date(trainerCalendarMonth.getFullYear(),trainerCalendarMonth.getMonth()-1,1);trainerCalendarDate='';trainerCalendarSlot=null;await loadTrainerCalendarAvailability();renderTrainerCalendar();};
   $('trainerCalendarNext').onclick=async()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerCalendarMonth=new Date(trainerCalendarMonth.getFullYear(),trainerCalendarMonth.getMonth()+1,1);trainerCalendarDate='';trainerCalendarSlot=null;await loadTrainerCalendarAvailability();renderTrainerCalendar();};
@@ -422,6 +426,7 @@
     const slot=Number(input.dataset.calendarOpenSlot);
     if(input.checked)slots.add(slot);else slots.delete(slot);
     trainerCalendarScheduleDraft=[...slots];
+    $('trainerCalendarDetails').querySelector('[data-save-calendar-schedule]').disabled=false;
   };
   $('trainerCalendarDetails').onclick=async e=>{
     const saveSchedule=e.target.closest('[data-save-calendar-schedule]');
@@ -431,15 +436,14 @@
       saveSchedule.disabled=true;
       const {error}=await db.rpc('trainer_set_class_schedule',{p_key:trainerKey,p_token:trainerToken,p_class_date:trainerCalendarDate,p_open_slots:openSlots});
       if(error){showDbError(error);saveSchedule.disabled=false;return;}
-      trainerCalendarScheduleDraft=null;
-      await loadTrainerCalendarAvailability();
+      trainerCalendarScheduleDraft=null;await loadTrainerCalendarAvailability();
       if(trainerCalendarSlot!==null&&!(trainerCalendarAvailability[trainerCalendarDate]||[]).includes(trainerCalendarSlot))trainerCalendarSlot=null;
       renderTrainerCalendar();notify('Horarios guardados para este día.');return;
     }
     const addBooking=e.target.closest('[data-calendar-add-booking]');
     if(addBooking){
       const memberName=$('trainerCalendarMember')?.value||'';
-      if(!memberName){notify('Selecciona un socio activo para añadir la reserva.');return;}
+      if(!memberName){notify('Selecciona un socio.');return;}
       addBooking.disabled=true;
       const {error}=await db.rpc('trainer_add_booking',{p_key:trainerKey,p_token:trainerToken,p_member_name:memberName,p_class_date:trainerCalendarDate,p_slot:trainerCalendarSlot});
       if(error){showDbError(error);addBooking.disabled=false;return;}
@@ -447,41 +451,22 @@
     }
     const warning=e.target.closest('[data-calendar-warning]');
     if(warning){
-      const absent=warning.dataset.warningAction==='mark';
-      if(absent&&!window.confirm('¿Confirmas que este socio no asistió a la clase reservada? Se registrará un warning en su historial.'))return;
-      if(!absent&&!window.confirm('¿Quieres anular este warning?'))return;
-      warning.disabled=true;
+      const absent=warning.dataset.warningAction==='absence';
       const {error}=await db.rpc('set_absence',{p_key:trainerKey,p_token:trainerToken,p_booking_id:warning.dataset.calendarWarning,p_absent:absent});
-      if(error){showDbError(error);warning.disabled=false;return;}
+      if(error){showDbError(error);return;}
       await fetchTrainerData();renderTrainerCalendar();notify(absent?'Warning registrado en el historial del socio.':'Warning anulado.');return;
     }
     const cancel=e.target.closest('[data-calendar-cancel]');
     if(cancel){
       if(trainerData?.is_owner!==true){notify('Solo Fernando puede cancelar reservas desde el calendario.');return;}
       if(classHasStarted(fromIsoDate(trainerCalendarDate),trainerCalendarSlot)){notify('No se puede cancelar una reserva cuando la clase ya ha empezado.');return;}
-      if(!window.confirm('¿Quieres cancelar esta reserva? Se guardará en el historial del socio.'))return;
-      cancel.disabled=true;
+      if(!window.confirm('¿Quieres cancelar esta reserva?'))return;
       const {error}=await db.rpc('trainer_cancel_booking',{p_key:trainerKey,p_token:trainerToken,p_booking_id:cancel.dataset.calendarCancel});
-      if(error){showDbError(error);cancel.disabled=false;return;}
+      if(error){showDbError(error);return;}
       await fetchTrainerData();await loadCounts();renderTrainerCalendar();notify('Reserva cancelada y registrada en el historial.');return;
     }
-    const button=e.target.closest('[data-calendar-slot]');if(!button)return;trainerCalendarSlot=Number(button.dataset.calendarSlot);renderTrainerCalendarDetails();
-  };
-  $('showAddMemberOwner').onclick=()=>changeTrainerView('addMember');
-  const openSchedule=async()=>{
-    if(trainerData?.is_owner!==true){notify('Solo Fernando puede gestionar los horarios.');return;}
-    if(!$('scheduleDate').value)$('scheduleDate').value=dateKey(new Date());
-    await changeTrainerView('schedule');await loadScheduleForDate();
-  };
-  $('showScheduleOwner').onclick=openSchedule;
-  $('scheduleDate').onchange=loadScheduleForDate;
-  async function loadScheduleForDate(){
-    const date=$('scheduleDate').value;if(!date)return;
-    const {data,error}=await db.rpc('get_class_counts',{p_start_date:date,p_end_date:date});
-    if(error){showDbError(error);return;}
-    (data||[]).forEach(row=>{const checkbox=document.querySelector(`[data-open-slot="${Number(row.class_slot)}"]`);if(checkbox)checkbox.checked=Boolean(row.is_open);});
-  }
-  $('saveScheduleButton').onclick=async()=>{
+    const slot=e.target.closest('[data-calendar-slot]');if(slot){trainerCalendarSlot=Number(slot.dataset.calendarSlot);renderTrainerCalendarDetails();}
+  };$('saveScheduleButton').onclick=async()=>{
     if(trainerData?.is_owner!==true){notify('Solo Fernando puede gestionar los horarios.');return;}
     const date=$('scheduleDate').value;if(!date){notify('Selecciona una fecha.');return;}
     const openSlots=[...document.querySelectorAll('[data-open-slot]:checked')].map(input=>Number(input.dataset.openSlot));
@@ -529,7 +514,7 @@
     $('newMemberName').value='';await fetchTrainerData();renderTrainerView();notify(`${name} ya puede reservar clases.`);button.disabled=false;
   };
   $('newMemberName').onkeydown=e=>{if(e.key==='Enter')$('addMemberButton').click();};
-  $('logoutTrainer').onclick=()=>setTrainerPanel(false);
+  $('logoutTrainer').onclick=()=>{closeTrainerCalendar();setTrainerPanel(false);if(trainerPortal)$('trainerModal').classList.add('show');};
   $('historyMembers').onclick=async e=>{
     const statusButton=e.target.closest('[data-toggle-member-active]');
     if(statusButton){
