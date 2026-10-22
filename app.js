@@ -4,10 +4,11 @@
   const MAX_CAPACITY = 6;
   const MEMBER_NAME_STORAGE_KEY = 'infinitFitnessDaganzoMemberName';
   const config = window.GYM_CONFIG || {};
+  const trainerPortal = document.body.dataset.portal === 'trainers';
   const ready = Boolean(window.supabase?.createClient && config.supabaseUrl && config.supabasePublishableKey && !config.supabaseUrl.includes('PEGA_AQUI') && !config.supabasePublishableKey.includes('PEGA_AQUI'));
   const db = ready ? window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey) : null;
   let view = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  let selected = null, selectedSlot = null, counts = {}, availability = {}, trainerKey = '', trainerToken = '', trainerData = null, trainerView = '', historyName = '', warningName = '';
+  let selected = null, selectedSlot = null, counts = {}, availability = {}, trainerKey = '', trainerToken = '', trainerLoginUsername = '', trainerData = null, trainerView = '', historyName = '', warningName = '';
   let trainerCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1),trainerCalendarDate='',trainerCalendarSlot=null,trainerCalendarAvailability={},trainerCalendarScheduleDraft=null;
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -120,7 +121,7 @@
     $('bookingConfirmation').classList.add('show'); $('closeBookingConfirmation').focus();
   }
   function closeBookingConfirmation() { $('bookingConfirmation').classList.remove('show'); }
-  function setTrainerPanel(authorized) { $('trainerLogin').hidden=authorized; $('trainerPanel').hidden=!authorized; if(!authorized){trainerKey='';trainerToken='';trainerData=null;$('trainerPassword').value='';historyName='';warningName='';$('roster').innerHTML='';$('pastRoster').innerHTML='';$('historyMembers').innerHTML='';$('historyView').innerHTML='';$('warningMembers').innerHTML='';$('warningSessions').innerHTML='';} }
+  function setTrainerPanel(authorized) { $('trainerLogin').hidden=authorized; $('trainerPanel').hidden=!authorized; if(!authorized){trainerKey='';trainerToken='';trainerData=null;$('trainerPassword').value='';historyName='';warningName='';$('trainerHistoryScreen').hidden=true;document.body.classList.remove('trainer-history-open');$('roster').innerHTML='';$('pastRoster').innerHTML='';$('historyMembers').innerHTML='';$('historyDetail').innerHTML='<div class="empty">Selecciona un socio para ver su historial.</div>';$('warningMembers').innerHTML='';$('warningSessions').innerHTML='';} }
   async function fetchTrainerData() {
     const {data,error}=await db.rpc('trainer_data',{p_key:trainerKey,p_token:trainerToken}); if(error) throw error;
     trainerData=data||{bookings:[],events:[]}; return trainerData;
@@ -262,8 +263,20 @@
     (trainerData?.events||[]).forEach(e=>{if(!members.has(norm(e.member_name)))members.set(norm(e.member_name),{name:e.member_name,active:true,registered:false});});
     const list=[...members.values()].sort((a,b)=>Number(b.active)-Number(a.active)||a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
     const owner=trainerData?.is_owner===true;
-    $('historyMembers').innerHTML=`<h3>Socios</h3>${owner?'<button class="markabsence clear-history clear-history-all" type="button" data-clear-all-history>Borrar todos los historiales</button>':''}${list.length?'<div class="member-list">'+list.map(member=>{const name=member.name,expanded=historyName&&norm(historyName)===norm(name);const statusControl=owner&&member.registered?`<button class="member-status-action ${member.active?'is-active':'is-inactive'}" type="button" data-toggle-member-active="${escapeHtml(name)}" data-next-active="${!member.active}">${member.active?'Desactivar':'Activar'}</button>`:`<span class="member-status-label ${member.active?'is-active':'is-inactive'}">${member.active?'Activo':'Inactivo'}</span>`;return `<div class="member-row"><div class="member-profile-row"><button class="member-choice ${expanded?'active':''}" type="button" data-member="${escapeHtml(name)}"><span>${escapeHtml(name)}</span><span class="member-expand">${expanded?'Cerrar historial':'Ver historial'}</span></button>${statusControl}</div>${expanded?`<div class="member-history-inline">${renderMemberHistory(name)}</div>`:''}</div>`}).join('')+'</div>':'<div class="empty">Todavía no hay socios en el historial.</div>'}`;
-    $('historyView').innerHTML='';
+    const query=norm($('historySearch').value),visible=list.filter(member=>!query||norm(member.name).includes(query));
+    $('historyResultCount').textContent=query?`Mostrando ${visible.length} de ${list.length} socios`:`${list.length} socios`;
+    const rows=visible.map(member=>{
+      const name=member.name,selected=historyName&&norm(historyName)===norm(name);
+      const statusControl=owner&&member.registered
+        ?`<button class="member-status-action ${member.active?'is-active':'is-inactive'}" type="button" data-toggle-member-active="${escapeHtml(name)}" data-next-active="${!member.active}">${member.active?'Desactivar':'Activar'}</button>`
+        :`<span class="member-status-label ${member.active?'is-active':'is-inactive'}">${member.active?'Activo':'Inactivo'}</span>`;
+      return `<div class="member-row"><div class="member-profile-row"><button class="member-choice ${selected?'active':''}" type="button" data-member="${escapeHtml(name)}"><span>${escapeHtml(name)}</span><span class="member-expand">${selected?'Seleccionado':'Ver ficha'}</span></button>${statusControl}</div></div>`;
+    }).join('');
+    const listContent=visible.length?`<div class="member-list">${rows}</div>`:`<div class="empty">${query?'No hay socios que coincidan con la búsqueda.':'Todavía no hay socios en el historial.'}</div>`;
+    const clearAll=owner?'<button class="markabsence clear-history clear-history-all" type="button" data-clear-all-history>Borrar todos los historiales</button>':'';
+    $('historyMembers').innerHTML=clearAll+listContent;
+    const selectedMember=list.find(member=>historyName&&norm(member.name)===norm(historyName));
+    $('historyDetail').innerHTML=selectedMember?`<div class="history-profile-heading"><span class="history-profile-icon" aria-hidden="true">${escapeHtml(selectedMember.name.split(/\s+/).slice(0,2).map(part=>part[0]||'').join('').toUpperCase())}</span><div><div class="eyebrow">Ficha del socio</div><h2>${escapeHtml(selectedMember.name)}</h2><span class="member-status-label ${selectedMember.active?'is-active':'is-inactive'}">${selectedMember.active?'Activo':'Inactivo'}</span></div></div>${renderMemberHistory(selectedMember.name)}`:'<div class="empty">Selecciona un socio de la lista para ver su historial.</div>';
   }
   function renderMemberHistory(name) {
     const events=(trainerData?.events||[]).filter(e=>norm(e.member_name)===norm(name)).sort((a,b)=>a.created_at.localeCompare(b.created_at));
@@ -297,13 +310,20 @@
     });
     $('showAddMemberOwner').classList.toggle('active-trainer-tab',trainerView==='addMember');
     $('showScheduleOwner').classList.toggle('active-trainer-tab',trainerView==='schedule');
-    $('roster').hidden=!['roster','today','future'].includes(trainerView); $('pastRoster').hidden=trainerView!=='pastRoster'; $('historyMembers').hidden=trainerView!=='history'; $('historyView').hidden=true; $('memberAddPanel').hidden=trainerView!=='addMember'||!isOwner; $('trainerBookingPanel').hidden=trainerView!=='addBooking'; $('schedulePanel').hidden=trainerView!=='schedule'||!isOwner; $('warningMembers').hidden=trainerView!=='warnings'; $('warningSessions').hidden=trainerView!=='warnings';
+    $('roster').hidden=!['roster','today','future'].includes(trainerView); $('pastRoster').hidden=trainerView!=='pastRoster'; $('historyMembers').hidden=trainerView!=='history'; $('memberAddPanel').hidden=trainerView!=='addMember'||!isOwner; $('trainerBookingPanel').hidden=trainerView!=='addBooking'; $('schedulePanel').hidden=trainerView!=='schedule'||!isOwner; $('warningMembers').hidden=trainerView!=='warnings'; $('warningSessions').hidden=trainerView!=='warnings';
     if(trainerView==='roster')renderRoster(); if(trainerView==='today'||trainerView==='future')renderOwnerRoster(trainerView); if(trainerView==='pastRoster')renderPastRoster(); if(trainerView==='history')renderMembers(); if(trainerView==='warnings')renderWarnings(); if(trainerView==='addBooking')renderAddBooking();
   }
   async function changeTrainerView(name) {
     if(!trainerKey)return; trainerView=name;
     try{await fetchTrainerData();renderTrainerView();}catch(error){showDbError(error);}
   }
+  async function openTrainerHistory() {
+    if(!trainerKey)return;
+    trainerView='history';
+    try{await fetchTrainerData();renderTrainerView();$('trainerHistoryScreen').hidden=false;document.body.classList.add('trainer-history-open');renderMembers();$('historySearch').focus();}
+    catch(error){showDbError(error);}
+  }
+  function closeTrainerHistory(){ $('trainerHistoryScreen').hidden=true;document.body.classList.remove('trainer-history-open'); }
   $('prev').onclick=()=>{view=new Date(view.getFullYear(),view.getMonth()-1,1);render();loadCounts();};
   $('next').onclick=()=>{view=new Date(view.getFullYear(),view.getMonth()+1,1);render();loadCounts();};
   $('days').onclick=e=>{const el=e.target.closest('[data-day]');if(!el)return;const d=new Date(view.getFullYear(),view.getMonth(),Number(el.dataset.day));if(!isBookable(d))return;selected=d;selectedSlot=null;renderCalendar();renderClasses();syncReserveButton();};
@@ -346,37 +366,51 @@
     notify(data?.late?'Cancelación registrada. Se avisará a los entrenadores.':'Reserva cancelada.');
     await loadMyBookings(); await loadCounts(); render();
   };
-  $('trainerOpen').onclick=()=>{$('trainerModal').classList.add('show');$('trainerName').focus();};
+  function selectTrainerProfile(username,remember=false){
+    const button=[...document.querySelectorAll('[data-trainer-username]')].find(item=>item.dataset.trainerUsername===username);
+    trainerLoginUsername=button?.dataset.trainerUsername||'';
+    document.querySelectorAll('[data-trainer-username]').forEach(item=>{const active=item===button;item.classList.toggle('selected',active);item.setAttribute('aria-pressed',String(active));});
+    $('trainerSelectedLabel').textContent=button?`Perfil seleccionado: ${button.dataset.trainerLabel}`:'Elige tu perfil para continuar.';
+    $('trainerSelectedLabel').classList.toggle('has-selection',Boolean(button));
+    $('trainerPassword').disabled=!button;
+    $('trainerPassword').placeholder=button?'Introduce tu contraseña':'Selecciona primero tu perfil';
+    $('trainerPassword').value='';
+    if(remember&&button){try{localStorage.setItem('infinitFitnessDaganzoTrainerUsername',trainerLoginUsername);}catch{}}
+  }
+  if($('trainerOpen'))$('trainerOpen').onclick=()=>{$('trainerModal').classList.add('show');(document.querySelector('.trainer-choice-button.selected')||$('trainerChoiceFernando')).focus();};
   $('closeBookingConfirmation').onclick=closeBookingConfirmation;
   $('bookingConfirmation').onclick=e=>{if(e.target===$('bookingConfirmation'))closeBookingConfirmation();};
   $('noticeClose').onclick=closeNotice;
   $('notice').onclick=e=>{if(e.target===$('notice'))closeNotice();};
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeBookingConfirmation();closeNotice();closeTrainerCalendar();}});
-  $('closeModal').onclick=()=>{$('trainerModal').classList.remove('show');setTrainerPanel(false);};
-  $('trainerModal').onclick=e=>{if(e.target===$('trainerModal')){$('trainerModal').classList.remove('show');setTrainerPanel(false);}};
-  try{$('trainerName').value=localStorage.getItem('infinitFitnessDaganzoTrainerUsername')||'';}catch{}
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeBookingConfirmation();closeNotice();closeTrainerCalendar();closeTrainerHistory();}});
+  $('closeModal').onclick=()=>{if(trainerPortal){setTrainerPanel(false);$('trainerModal').classList.add('show');return;}$('trainerModal').classList.remove('show');setTrainerPanel(false);};
+  $('trainerModal').onclick=e=>{if(e.target===$('trainerModal')){if(trainerPortal){setTrainerPanel(false);$('trainerModal').classList.add('show');return;}$('trainerModal').classList.remove('show');setTrainerPanel(false);}};
+  document.querySelectorAll('[data-trainer-username]').forEach(button=>button.onclick=()=>selectTrainerProfile(button.dataset.trainerUsername,true));
+  try{const saved=localStorage.getItem('infinitFitnessDaganzoTrainerUsername')||'';const oldNames={'FernandoVaquero':'Fernando','FernandoVaquero01':'Fernando','SalmaAparici':'Salma','CésarSendín':'César','AntonioSánchez':'Toni'};selectTrainerProfile(oldNames[saved]||saved);}catch{}
   window.gymTrainerLogin=async()=>{
     if(!ready){notify('Primero hay que configurar la base de datos compartida.');return;}
-    const input=$('trainerName').value.trim(),password=$('trainerPassword').value;
-    if(!input||!password){notify('Escribe tu usuario y contraseña de entrenador.');return;}
+    const input=trainerLoginUsername,password=$('trainerPassword').value;
+    if(!input){notify('Selecciona tu perfil de entrenador.');return;}
+    if(!password){notify('Escribe tu contraseña de entrenador.');return;}
     const loginButton=$('trainerLoginButton');loginButton.disabled=true;
     try{
       const {data,error}=await db.rpc('trainer_login',{p_username:input,p_password:password});
       if(error)throw error;
       trainerKey=data?.trainer_name||'';trainerToken=data?.token||'';
       if(!trainerKey||!trainerToken)throw new Error('No se recibió una sesión válida.');
-      try{localStorage.setItem('infinitFitnessDaganzoTrainerUsername',input);}catch{}
-      await fetchTrainerData();trainerView='';setTrainerPanel(true);renderTrainerView();
+      await fetchTrainerData();trainerView='';setTrainerPanel(true);renderTrainerView();if(trainerPortal){$('trainerModal').classList.add('show');await openTrainerCalendar();}
     }catch(error){console.error('No se pudo validar el entrenador:',error);notify('Usuario o contraseña incorrectos.');trainerKey='';trainerToken='';}
     finally{$('trainerPassword').value='';loginButton.disabled=false;}
   };
-  $('trainerName').onkeydown=$('trainerPassword').onkeydown=e=>{if(e.key==='Enter')window.gymTrainerLogin();};
+  $('trainerPassword').onkeydown=e=>{if(e.key==='Enter')window.gymTrainerLogin();};
   const handleTrainerNavClick=e=>{
     if(e.target.closest('[data-open-trainer-calendar]')){openTrainerCalendar();return;}
-    const button=e.target.closest('[data-trainer-view]');if(button)changeTrainerView(button.dataset.trainerView);
+    const button=e.target.closest('[data-trainer-view]');if(button){if(button.dataset.trainerView==='history')openTrainerHistory();else changeTrainerView(button.dataset.trainerView);}
   };
   $('ownerTrainerNav').onclick=handleTrainerNavClick;
   $('regularTrainerNav').onclick=handleTrainerNavClick;
+  $('closeTrainerHistory').onclick=closeTrainerHistory;
+  $('historySearch').oninput=renderMembers;
   $('closeTrainerCalendar').onclick=closeTrainerCalendar;
   $('trainerCalendarModal').onclick=e=>{if(e.target===$('trainerCalendarModal'))closeTrainerCalendar();};
   $('trainerCalendarPrev').onclick=async()=>{if(!discardTrainerCalendarScheduleDraft())return;trainerCalendarScheduleDraft=null;trainerCalendarMonth=new Date(trainerCalendarMonth.getFullYear(),trainerCalendarMonth.getMonth()-1,1);trainerCalendarDate='';trainerCalendarSlot=null;await loadTrainerCalendarAvailability();renderTrainerCalendar();};
@@ -534,7 +568,7 @@
       await fetchTrainerData();renderTrainerView();notify('Se han borrado todos los historiales. Los socios y las reservas activas se han conservado.');return;
     }
     const member=e.target.closest('[data-member]');if(!member)return;
-    historyName=norm(historyName)===norm(member.dataset.member)?'':member.dataset.member;renderMembers();
+    historyName=member.dataset.member;renderMembers();
   };
   $('warningMembers').onclick=e=>{const button=e.target.closest('[data-warning-member]');if(!button)return;warningName=button.dataset.warningMember;renderWarnings();};
   $('warningSessions').onclick=async e=>{
@@ -561,6 +595,7 @@
   };
   $('roster').onclick=handleRosterAction;
   $('pastRoster').onclick=handleRosterAction;
+  if(trainerPortal)$('trainerModal').classList.add('show');
   updateRulesContactLinks();
   render();
   if(ready)loadCounts();
