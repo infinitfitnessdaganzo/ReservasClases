@@ -225,12 +225,19 @@
     renderTrainerCalendarDetails();
   }
   function renderTrainerCalendarDetails() {
-    const details=$('trainerCalendarDetails');
-    if(!trainerCalendarDate){details.innerHTML='<div class="empty">Selecciona un día para ver sus clases.</div>';return;}
+    const details=$('trainerCalendarDetails'),summary=$('trainerCalendarSummary');
+    if(!trainerCalendarDate){summary.hidden=true;summary.innerHTML='';details.innerHTML='<div class="empty">Selecciona un día para ver sus clases.</div>';return;}
     const day=fromIsoDate(trainerCalendarDate);
     const scheduledSlots=trainerCalendarAvailability[trainerCalendarDate]||[];
     const openSlots=[...new Set([...scheduledSlots,...(trainerData?.bookings||[]).filter(b=>b.class_date===trainerCalendarDate).map(b=>Number(b.class_slot))])];
     const heading=`<h3>${escapeHtml(displayDate(day,{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}</h3>`;
+    summary.hidden=false;
+    summary.innerHTML=`<h3>Resumen del día</h3><div class="trainer-calendar-summary-grid">${TIMES.map((time,slot)=>{
+      const people=(trainerData?.bookings||[]).filter(b=>b.class_date===trainerCalendarDate&&Number(b.class_slot)===slot).sort((a,b)=>a.member_name.localeCompare(b.member_name,'es',{sensitivity:'base'}));
+      const isOpen=scheduledSlots.includes(slot)||people.length>0;
+      const status=!isOpen?'Sin clase':people.length?`${people.length} ${people.length===1?'persona apuntada':'personas apuntadas'}`:'Sin reservas';
+      return `<article class="trainer-calendar-summary-card ${people.length?'has-people':''} ${!isOpen?'no-class':''}"><div class="trainer-calendar-summary-head"><strong>${time}</strong><span>${status}</span></div>${people.length?`<ul>${people.map(person=>`<li>${escapeHtml(person.member_name)}</li>`).join('')}</ul>`:'<p class="trainer-calendar-summary-empty">—</p>'}</article>`;
+    }).join('')}</div>`;
     const draftSlots=trainerCalendarScheduleDraft??scheduledSlots;
     const scheduleManager=trainerData?.is_owner===true?`<div class="trainer-calendar-schedule"><h4>Gestionar sesiones de este día</h4><p>Activa o desactiva los horarios, incluidos sábados y domingos.</p><div class="trainer-calendar-schedule-options">${TIMES.map((time,slot)=>`<label class="trainer-calendar-schedule-option"><input type="checkbox" data-calendar-open-slot="${slot}" ${draftSlots.includes(slot)?'checked':''}><span>${time}</span></label>`).join('')}</div><button type="button" class="primary calendar-save-schedule" data-save-calendar-schedule>Guardar horarios</button><small>Para cerrar una sesión que ya tiene reservas, cancélalas primero.</small></div>`:'';
     if(!openSlots.length){details.innerHTML=`${heading}${trainerData?.is_owner===true?'':'<div class="empty">No hay clases programadas este día.</div>'}${scheduleManager}`;return;}
