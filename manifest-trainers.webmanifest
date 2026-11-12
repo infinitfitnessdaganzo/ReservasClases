@@ -1,0 +1,17 @@
+{
+  "id": "./entrenadores.html",
+  "name": "Área de entrenadores · Infinit Fitness Daganzo",
+  "short_name": "Equipo Infinit",
+  "description": "Calendario y herramientas del equipo de Infinit Fitness Daganzo.",
+  "lang": "es-ES",
+  "start_url": "./entrenadores.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f4ef",
+  "theme_color": "#eaf8fc",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "./index.html",
+  "name": "Reservas · Infinit Fitness Daganzo",
+  "short_name": "Reservas Infinit",
+  "description": "Reserva tus clases en Infinit Fitness Daganzo.",
+  "lang": "es-ES",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f4ef",
+  "theme_color": "#eaf8fc",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
