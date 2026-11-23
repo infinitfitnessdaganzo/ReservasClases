@@ -320,7 +320,7 @@
     const clearAll=owner?'<button class="markabsence clear-history clear-history-all" type="button" data-clear-all-history>Borrar todos los historiales</button>':'';
     $('historyMembers').innerHTML=clearAll+listContent;
     const selectedMember=list.find(member=>historyName&&norm(member.name)===norm(historyName));
-    $('historyDetail').innerHTML=selectedMember?`<div class="history-profile-heading"><span class="history-profile-icon" aria-hidden="true">${escapeHtml(selectedMember.name.split(/\s+/).slice(0,2).map(part=>part[0]||'').join('').toUpperCase())}</span><div><div class="eyebrow">Ficha del socio</div><h2>${escapeHtml(selectedMember.name)}</h2><span class="member-status-label ${selectedMember.active?'is-active':'is-inactive'}">${selectedMember.active?'Activo':'Inactivo'}</span></div></div>${renderMemberHistory(selectedMember.name)}`:'<div class="empty">Selecciona un socio de la lista para ver su historial.</div>';
+    $('historyDetail').innerHTML=selectedMember?`<div class="history-profile-heading"><span class="history-profile-icon" aria-hidden="true">${escapeHtml(selectedMember.name.split(/\s+/).slice(0,2).map(part=>part[0]||'').join('').toUpperCase())}</span><div><div class="eyebrow">Ficha del socio</div><h2>${escapeHtml(selectedMember.name)}</h2><span class="member-status-label ${selectedMember.active?'is-active':'is-inactive'}">${selectedMember.active?'Activo':'Inactivo'}</span>${owner&&selectedMember.registered?`<div><button class="secondary member-rename-button" type="button" data-rename-member="${escapeHtml(selectedMember.name)}">Modificar nombre</button></div>`:''}</div></div>${renderMemberHistory(selectedMember.name)}`:'<div class="empty">Selecciona un socio de la lista para ver su historial.</div>';
   }
   function renderMemberHistory(name) {
     const events=(trainerData?.events||[]).filter(e=>norm(e.member_name)===norm(name)).sort((a,b)=>a.created_at.localeCompare(b.created_at));
@@ -616,7 +616,21 @@
     $('trainerCalendarModal').hidden=true;document.body.classList.remove('trainer-calendar-open');
     setTrainerPanel(false);if(trainerPortal)$('trainerModal').classList.add('show');
   };
-  $('historyMembers').onclick=async e=>{
+  $('trainerHistoryScreen').onclick=async e=>{
+    const renameButton=e.target.closest('[data-rename-member]');
+    if(renameButton){
+      if(trainerData?.is_owner!==true){notify('Solo Fernando o Toni pueden modificar los datos de los socios.');return;}
+      const oldName=renameButton.dataset.renameMember;
+      const newName=window.prompt('Escribe el nombre y los dos apellidos corregidos:',oldName);
+      if(newName===null)return;
+      const normalized=newName.trim().replace(/\s+/g,' ');
+      if(!normalized){notify('Escribe el nombre y los dos apellidos.');return;}
+      if(!window.confirm(`Se actualizará «${oldName}» a «${normalized}» en el registro, las reservas y todo su historial. ¿Quieres continuar?`))return;
+      renameButton.disabled=true;
+      const {error}=await db.rpc('trainer_rename_member',{p_key:trainerKey,p_token:trainerToken,p_old_name:oldName,p_new_name:normalized});
+      if(error){showDbError(error);renameButton.disabled=false;return;}
+      historyName=normalized;await fetchTrainerData();renderTrainerView();notify(`El socio ahora figura como «${normalized}». Sus reservas e historial se han conservado.`);return;
+    }
     const statusButton=e.target.closest('[data-toggle-member-active]');
     if(statusButton){
       if(trainerData?.is_owner!==true){notify('Solo Fernando o Toni pueden activar o desactivar socios.');return;}
@@ -689,3 +703,4 @@
   else $('classlist').innerHTML='<div class="empty">Para activar reservas compartidas, configura Supabase en <strong>config.js</strong> y ejecuta <strong>schema.sql</strong> en su editor SQL.</div>';
   setInterval(async()=>{if(!ready)return;await loadCounts();if(trainerKey){try{await fetchTrainerData();renderTrainerView();if(!$('trainerCalendarModal').hidden)renderTrainerCalendar();}catch(e){}}},30000);
 })();
+
